@@ -1,0 +1,8 @@
+[package]
+name = "maple"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+pal = { path = "libs/pal" }
+fnv = "1.0.7"

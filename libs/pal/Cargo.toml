@@ -1,0 +1,10 @@
+[package]
+name = "pal"
+version = "0.1.0"
+edition = "2018"
+
+[target.'cfg(windows)'.dependencies]
+windows = "0.17.2"
+
+[target.'cfg(windows)'.build-dependencies]
+windows = "0.17.2"
