@@ -1,22 +1,24 @@
 use super::commands::Command;
 use super::elements::*;
+use super::window::*;
+use super::platform;
 use std::process;
 
 const MAX_OS_WINDOWS: usize = 16;
 
 /// Stores state global to all GUI windows.
 pub struct Context {
-    windows: [Option<Window>; MAX_OS_WINDOWS],
     frame_counter: usize,
+    platform_context: platform::Context,
+    windows: [Option<Window>; MAX_OS_WINDOWS],
 }
 
 impl Context {
     pub fn new() -> Self {
-        // register WNDCLASS here
-
         Context {
-            windows: [Default::default(); MAX_OS_WINDOWS],
             frame_counter: 0,
+            platform_context: platform::Context::new(),
+            windows: [Default::default(); MAX_OS_WINDOWS],
         }
     }
 
@@ -33,20 +35,24 @@ impl Context {
         process::exit(0);
     }
 
-    /// Updates the context for a new frame. Unused resources from previous
-    /// frames (such as OS windows) will be destroyed here.
-    fn tick(&mut self) {
-        println!("tick");
+    fn begin_frame(&mut self) {
+        self.frame_counter += 1;
+    }
+
+    /// Performs cleanup of unused resources from previous frames.
+    ///
+    /// OS windows that were not touched this frame will be destroyed.
+    fn end_frame(&mut self) {
+        println!("end_frame");
         for slot in self.windows.iter_mut().filter(|x| x.is_some()) {
             let window = slot.as_ref().unwrap();
             if window.frame_last_touched < self.frame_counter {
                 // destroy os window here!
                 println!("Destroying windows: {}", window.get_title());
+                self.platform_context.destroy_window(window.os_window);
                 *slot = None;
             }
         }
-
-        self.frame_counter += 1;
     }
 
     /// Touches a window to keep it alive for the current frame. If the window
@@ -54,7 +60,7 @@ impl Context {
     /// with default parameters.
     ///
     /// Windows that are not touched in the current frame will be destroyed in
-    /// the next frame (the next time `tick()` is called).
+    /// the next frame (the next time `end_frame()` is called).
     fn touch_window(&mut self, name: &str) -> Option<usize> {
         let name_hash = Window::hash_title(name);
 
@@ -71,8 +77,8 @@ impl Context {
         }
 
         if let Some(i) = free_index {
-            self.windows[i] = Some(Window::new(name, name_hash, self.frame_counter));
-            // create os window
+            let os_window = self.platform_context.create_window(name);
+            self.windows[i] = Some(Window::new(name, name_hash, self.frame_counter, os_window));
         }
         free_index
     }
@@ -119,20 +125,19 @@ where
     F: 'static + FnMut(&mut Control),
 {
     pub fn run(&mut self) {
+        self.context.begin_frame();
+
         let mut control = Control::new(self.context);
         (self.event_handler)(&mut control);
 
         for command in control.commands {
             match command {
-                Command::BeginWindow(id) => {}
+                Command::BeginWindow(_) => {}
                 Command::EndWindow => {}
             }
         }
 
-        self.context.tick();
-
-        // simulate second iteration of loop
-        self.context.tick();
+        self.context.end_frame();
 
         // call event_handler
         // every time a BeginWindow command is encountered

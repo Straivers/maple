@@ -6,7 +6,13 @@ fn main() {
 fn build_apis() {
     windows::build! {
         Windows::Win32::{
-        Foundation::{HWND, LPARAM, WPARAM}
+            Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR},
+            System::{Diagnostics::Debug::GetLastError, LibraryLoader::{GetModuleHandleW}},
+            UI::WindowsAndMessaging::{
+                WNDCLASSW, DefWindowProcW,
+                RegisterClassW, CreateWindowExW, DestroyWindow,
+                GetMessageW, TranslateMessage, DispatchMessageW
+            },
         }
     }
 }
