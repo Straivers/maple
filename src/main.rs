@@ -1,15 +1,23 @@
+mod handle;
 mod ui;
 
 fn main() {
+    let mut w1 = true;
+    let mut w2 = true;
+
     let mut ui = ui::Context::new();
     ui.run(move |ui| {
-        ui.begin("main");
-        ui.end();
+        if w1 && ui.begin("main") {
+            ui.end();
+        } else {
+            w1 = false;
+        }
 
-        ui.begin("main2");
-        ui.begin("main3");
-        ui.begin("main4");
-        ui.begin("main5");
+        if w2 && ui.begin("main2") {
+            ui.end();
+        } else {
+            w2 = false;
+        }
     });
 }
 

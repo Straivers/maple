@@ -1,8 +1,11 @@
+use super::platform;
+use crate::handle::Handle32;
 use fnv::FnvHasher;
 use std::cmp::min;
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU8;
-use super::platform;
+
+pub type WindowHandle = Handle32<1024>;
 
 const MAX_TITLE_LENGTH: usize = 256;
 

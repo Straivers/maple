@@ -9,9 +9,11 @@ fn build_apis() {
             Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR},
             System::{Diagnostics::Debug::GetLastError, LibraryLoader::{GetModuleHandleW}},
             UI::WindowsAndMessaging::{
-                WNDCLASSW, DefWindowProcW,
-                RegisterClassW, CreateWindowExW, DestroyWindow,
-                GetMessageW, TranslateMessage, DispatchMessageW
+                WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
+                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_PAINT,
+                RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
+                WaitMessage, PeekMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage,
+                SetClassLongPtrW, GetClassLongPtrW, SetWindowLongPtrW, GetWindowLongPtrW,
             },
         }
     }
