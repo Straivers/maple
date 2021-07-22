@@ -5,4 +5,3 @@ edition = "2018"
 
 [dependencies]
 pal = { path = "libs/pal" }
-fnv = "1.0.7"

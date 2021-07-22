@@ -1,24 +1,19 @@
+use crate::ui::os_window::OsWindow;
+
 mod handle;
 mod ui;
 
 fn main() {
-    let mut w1 = true;
-    let mut w2 = true;
+    let mut w = ui::os_window::OsWindow::new("title");
+    println!("{:?}", w.as_mut() as *mut OsWindow);
 
-    let mut ui = ui::Context::new();
-    ui.run(move |ui| {
-        if w1 && ui.begin("main") {
-            ui.end();
-        } else {
-            w1 = false;
-        }
+    while !w.was_close_requested {
+        ui::os_window::poll_events();
+    }
 
-        if w2 && ui.begin("main2") {
-            ui.end();
-        } else {
-            w2 = false;
-        }
-    });
+    println!("done");
+
+    std::mem::drop(w);
 }
 
 /*

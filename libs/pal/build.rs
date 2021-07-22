@@ -10,9 +10,9 @@ fn build_apis() {
             System::{Diagnostics::Debug::GetLastError, LibraryLoader::{GetModuleHandleW}},
             UI::WindowsAndMessaging::{
                 WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
-                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_PAINT,
+                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_PAINT, WM_DESTROY,
                 RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
-                WaitMessage, PeekMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage,
+                WaitMessage, GetMessageW, PeekMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage,
                 SetClassLongPtrW, GetClassLongPtrW, SetWindowLongPtrW, GetWindowLongPtrW,
             },
         }
