@@ -1,26 +1,25 @@
-
 use pal::win32::{
-    Foundation::*,
-    System::Diagnostics::Debug::GetLastError,
-    System::LibraryLoader::GetModuleHandleW,
-    UI::WindowsAndMessaging::*,
+    Foundation::*, System::Diagnostics::Debug::GetLastError,
+    System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*,
 };
+use std::cell::RefCell;
 use std::marker::PhantomPinned;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
 const MAX_TITLE_LENGTH: usize = 256;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OsWindow {
     pub hwnd: HWND,
     pub was_close_requested: bool,
-    _pin: PhantomPinned
+    _pin: PhantomPinned,
 }
 
 impl OsWindow {
-    pub fn new(title: &str) -> Box<Self> {
-        let mut window = Box::new(Self::default());
-        create_window(title, window.as_mut() as *mut _);
+    pub fn new(title: &str) -> Box<RefCell<Self>> {
+        let mut window = Box::new(RefCell::new(Self::default()));
+        let p: &mut RefCell<OsWindow> = &mut window;
+        create_window(title, p as *mut _);
         window
     }
 }
@@ -31,7 +30,7 @@ impl Drop for OsWindow {
     }
 }
 
-pub fn create_window(title: &str, window_data: *mut OsWindow) {
+pub fn create_window(title: &str, window_data: *mut RefCell<OsWindow>) {
     let mut class_name = TitleConv::new(WNDCLASS_NAME);
     let hmodule = unsafe { GetModuleHandleW(None) };
     assert_ne!(hmodule, HINSTANCE::NULL);
@@ -44,7 +43,7 @@ pub fn create_window(title: &str, window_data: *mut OsWindow) {
         ..Default::default()
     };
 
-    let atom = unsafe { RegisterClassW(&class) };
+    let _ = unsafe { RegisterClassW(&class) };
 
     let mut w_title = TitleConv::new(title);
     let hwnd = unsafe {
@@ -64,18 +63,20 @@ pub fn create_window(title: &str, window_data: *mut OsWindow) {
         )
     };
 
-    assert_ne!(hwnd, HWND::NULL, "Window creation failed: {:?}", unsafe { GetLastError() });
+    assert_ne!(hwnd, HWND::NULL, "Window creation failed: {:?}", unsafe {
+        GetLastError()
+    });
 
     unsafe { ShowWindow(hwnd, SW_SHOW) };
 }
 
 pub fn poll_events() {
     let mut msg = MSG::default();
-    unsafe  {
+    unsafe {
         while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
-    
+
             if msg.message == WM_QUIT {
                 break;
             }
@@ -88,13 +89,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, cs.lpCreateParams as _);
 
-        let window = cs.lpCreateParams as *mut OsWindow;
-        (*window).hwnd = hwnd;
+        let window = cs.lpCreateParams as *mut RefCell<OsWindow>;
+        (*window).borrow_mut().hwnd = hwnd;
 
         return LRESULT(1);
     }
 
-    let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut OsWindow;
+    let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<OsWindow>;
 
     if window == std::ptr::null_mut() {
         return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -102,14 +103,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 
     match msg {
         WM_CLOSE => {
-            (*window).was_close_requested = true;
+            (*window).borrow_mut().was_close_requested = true;
             LRESULT::default()
-        },
+        }
         WM_DESTROY => {
-            (*window).hwnd = HWND::NULL;
+            (*window).borrow_mut().hwnd = HWND::NULL;
             LRESULT::default()
-        },
-        _ => DefWindowProcW(hwnd, msg, wparam, lparam)
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
 

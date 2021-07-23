@@ -1,17 +1,13 @@
-use crate::ui::os_window::OsWindow;
-
 mod handle;
 mod ui;
 
 fn main() {
     let mut w = ui::os_window::OsWindow::new("title");
-    println!("{:?}", w.as_mut() as *mut OsWindow);
+    println!("{:?}", &w);
 
-    while !w.was_close_requested {
+    while !w.borrow().was_close_requested {
         ui::os_window::poll_events();
     }
-
-    println!("done");
 
     std::mem::drop(w);
 }
