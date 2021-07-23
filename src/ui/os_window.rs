@@ -78,7 +78,7 @@ pub fn create_window(title: &str, window_data: *mut OsWindow) {
             None,
             None,
             GetModuleHandleW(None),
-            window_data.cast::<c_void>()
+            window_data.cast::<c_void>(),
         )
     };
 

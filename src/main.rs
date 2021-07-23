@@ -1,27 +1,40 @@
 mod ui;
 
-fn main() {
-    let mut windows = Vec::new();
-    windows.push(create_window("Title 1"));
-    windows.push(create_window("Title 2"));
-    windows.push(create_window("Title 3"));
-    windows.push(create_window("Title 4"));
-    windows.push(create_window("Title 5"));
+mod os_window2;
 
-    while !windows.is_empty() {
-        for window in &mut windows {
-            window.poll();
+fn main() {
+    // let mut windows = Vec::new();
+    // windows.push(create_window("Title 1"));
+    // windows.push(create_window("Title 2"));
+    // windows.push(create_window("Title 3"));
+    // windows.push(create_window("Title 4"));
+    // windows.push(create_window("Title 5"));
+
+    // while !windows.is_empty() {
+    //     for window in &mut windows {
+    //         window.poll();
+    //     }
+
+    //     windows.retain(|window| !window.was_close_requested);
+    // }
+
+    let mut wm = os_window2::WindowManager::new();
+    let w1 = wm.create_window("Title 1");
+
+    while wm.has_windows() {
+        if let Some(window) = wm.get(w1) {
+            if window.was_close_requested {
+                wm.destroy_window(w1);
+            }
         }
 
-        windows.retain(|window| {
-            !window.was_close_requested
-        });
+        wm.poll();
     }
 }
 
-fn create_window(title: &str) -> Box<ui::os_window::OsWindow> {
-    ui::os_window::OsWindow::new(title)
-}
+// fn create_window(title: &str) -> Box<ui::os_window::OsWindow> {
+    // ui::os_window::OsWindow::new(title)
+// }
 
 /*
 Sketch A: Simple Text + Button
