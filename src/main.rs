@@ -1,19 +1,26 @@
-mod handle;
 mod ui;
 
 fn main() {
     let mut windows = Vec::new();
-    windows.push(ui::os_window::OsWindow::new("Title 1"));
-    windows.push(ui::os_window::OsWindow::new("Title 2"));
-    windows.push(ui::os_window::OsWindow::new("Title 3"));
-    windows.push(ui::os_window::OsWindow::new("Title 4"));
-    windows.push(ui::os_window::OsWindow::new("Title 5"));
+    windows.push(create_window("Title 1"));
+    windows.push(create_window("Title 2"));
+    windows.push(create_window("Title 3"));
+    windows.push(create_window("Title 4"));
+    windows.push(create_window("Title 5"));
 
     while !windows.is_empty() {
-        windows.retain(|window| !window.borrow().was_close_requested);
+        for window in &mut windows {
+            window.poll();
+        }
 
-        ui::os_window::poll_events();
+        windows.retain(|window| {
+            !window.was_close_requested
+        });
     }
+}
+
+fn create_window(title: &str) -> Box<ui::os_window::OsWindow> {
+    ui::os_window::OsWindow::new(title)
 }
 
 /*
