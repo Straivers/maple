@@ -2,14 +2,18 @@ mod handle;
 mod ui;
 
 fn main() {
-    let mut w = ui::os_window::OsWindow::new("title");
-    println!("{:?}", &w);
+    let mut windows = Vec::new();
+    windows.push(ui::os_window::OsWindow::new("Title 1"));
+    windows.push(ui::os_window::OsWindow::new("Title 2"));
+    windows.push(ui::os_window::OsWindow::new("Title 3"));
+    windows.push(ui::os_window::OsWindow::new("Title 4"));
+    windows.push(ui::os_window::OsWindow::new("Title 5"));
 
-    while !w.borrow().was_close_requested {
+    while !windows.is_empty() {
+        windows.retain(|window| !window.borrow().was_close_requested);
+
         ui::os_window::poll_events();
     }
-
-    std::mem::drop(w);
 }
 
 /*
