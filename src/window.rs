@@ -106,12 +106,15 @@ impl Drop for Window {
 ///
 // Impl Note: This is a great place to stash anything that is shared between
 // windows.
-pub struct EventLoop {}
+pub struct EventLoop {
+    // So that we get /* fields omitted */ in the docs
+    #[doc(hidden)] _empty: u8
+}
 
 impl EventLoop {
     /// Creates a new event loop
     pub fn new() -> Self {
-        Self {}
+        Self { _empty: 0 }
     }
 
     /// Polls the operating system for input and window events. The events will
