@@ -7,13 +7,13 @@ fn build_apis() {
     windows::build! {
         Windows::Win32::{
             Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR},
-            System::{Diagnostics::Debug::GetLastError, LibraryLoader::{GetModuleHandleW}},
+            System::{LibraryLoader::{GetModuleHandleW}},
             UI::WindowsAndMessaging::{
                 WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
-                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_PAINT, WM_DESTROY,
+                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_DESTROY,
                 RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
-                WaitMessage, GetMessageW, PeekMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage,
-                SetClassLongPtrW, GetClassLongPtrW, SetWindowLongPtrW, GetWindowLongPtrW,
+                PeekMessageW, TranslateMessage, DispatchMessageW,
+                SetWindowLongPtrW, GetWindowLongPtrW,
             },
         }
     }
