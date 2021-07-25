@@ -8,6 +8,7 @@ debug = true
 
 [dependencies]
 pal = { path = "libs/pal" }
+utils = { path = "libs/utils" }
 
 [dependencies.clap]
 version = "2.33"

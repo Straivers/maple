@@ -15,6 +15,8 @@ use pal::{
     },
 };
 
+use utils::array_vec::ArrayVec;
+
 use super::error::*;
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
@@ -207,60 +209,6 @@ impl Drop for VulkanContext {
     }
 }
 
-fn load_physical_devices<'a>(
-    instance: &Instance,
-    buffer: &'a mut [vk::PhysicalDevice],
-) -> Result<&'a [vk::PhysicalDevice], RendererError> {
-    let mut num_physical_devices = 0;
-    unsafe {
-        instance.fp_v1_0().enumerate_physical_devices(
-            instance.handle(),
-            &mut num_physical_devices,
-            std::ptr::null_mut(),
-        )
-    }
-    .result()?;
-    num_physical_devices = min(num_physical_devices, buffer.len() as u32);
-    unsafe {
-        instance.fp_v1_0().enumerate_physical_devices(
-            instance.handle(),
-            &mut num_physical_devices,
-            buffer.as_mut_ptr(),
-        )
-    }
-    .result()?;
-
-    Ok(&buffer[0..num_physical_devices as usize])
-}
-
-fn load_queue_families<'a>(
-    instance: &Instance,
-    physical_device: vk::PhysicalDevice,
-    buffer: &'a mut [vk::QueueFamilyProperties],
-) -> &'a [vk::QueueFamilyProperties] {
-    let mut num_queue_families = 0;
-    unsafe {
-        instance
-            .fp_v1_0()
-            .get_physical_device_queue_family_properties(
-                physical_device,
-                &mut num_queue_families,
-                std::ptr::null_mut(),
-            )
-    };
-    num_queue_families = min(num_queue_families, buffer.len() as u32);
-    unsafe {
-        instance
-            .fp_v1_0()
-            .get_physical_device_queue_family_properties(
-                physical_device,
-                &mut num_queue_families,
-                buffer.as_mut_ptr(),
-            )
-    };
-    &buffer[0..num_queue_families as usize]
-}
-
 unsafe extern "system" fn debug_callback(
     _severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _message_type: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -282,12 +230,8 @@ fn select_physical_device(
     instance: &Instance,
     surface_api: &Win32Surface,
 ) -> Result<Gpu, RendererError> {
-    let mut physical_device_storage = [vk::PhysicalDevice::default(); MAX_PHYSICAL_DEVICES];
-    let mut queue_property_storage = [vk::QueueFamilyProperties::default(); MAX_QUEUE_FAMILIES];
-
-    for physical_device in load_physical_devices(instance, &mut physical_device_storage)? {
-        let queue_families =
-            load_queue_families(instance, *physical_device, &mut queue_property_storage);
+    for physical_device in &load_physical_devices(instance)? {
+        let queue_families = load_queue_families(instance, *physical_device);
 
         let mut graphics = None;
         let mut present = None;
@@ -316,4 +260,70 @@ fn select_physical_device(
     }
 
     Err(RendererError::NoSuitableGPU)
+}
+
+fn load_physical_devices<'a>(
+    instance: &Instance,
+) -> Result<ArrayVec<vk::PhysicalDevice, MAX_PHYSICAL_DEVICES>, RendererError> {
+    let mut num_physical_devices = 0;
+    unsafe {
+        instance.fp_v1_0().enumerate_physical_devices(
+            instance.handle(),
+            &mut num_physical_devices,
+            std::ptr::null_mut(),
+        )
+    }
+    .result()?;
+
+    let mut buffer = ArrayVec::new();
+    num_physical_devices = min(num_physical_devices, buffer.capacity() as u32);
+
+    unsafe {
+        instance
+            .fp_v1_0()
+            .enumerate_physical_devices(
+                instance.handle(),
+                &mut num_physical_devices,
+                buffer.as_mut_ptr_unchecked(),
+            )
+            .result()?;
+
+        buffer.set_len(num_physical_devices as usize);
+    }
+
+    Ok(buffer)
+}
+
+fn load_queue_families<'a>(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+) -> ArrayVec<vk::QueueFamilyProperties, MAX_QUEUE_FAMILIES> {
+    let mut num_queue_families = 0;
+
+    unsafe {
+        instance
+            .fp_v1_0()
+            .get_physical_device_queue_family_properties(
+                physical_device,
+                &mut num_queue_families,
+                std::ptr::null_mut(),
+            )
+    };
+
+    let mut buffer = ArrayVec::new();
+    num_queue_families = min(num_queue_families, buffer.capacity() as u32);
+
+    unsafe {
+        instance
+            .fp_v1_0()
+            .get_physical_device_queue_family_properties(
+                physical_device,
+                &mut num_queue_families,
+                buffer.as_mut_ptr_unchecked(),
+            );
+
+        buffer.set_len(num_queue_families as usize);
+    }
+
+    buffer
 }

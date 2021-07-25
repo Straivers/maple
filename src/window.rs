@@ -1,7 +1,8 @@
 use pal::win32::{
     Foundation::*, System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*,
 };
-use std::{cell::RefCell, cmp::min, marker::PhantomPinned};
+use std::{cell::RefCell, cmp::min, iter::FromIterator, marker::PhantomPinned};
+use utils::array_vec::ArrayVec;
 
 #[doc(hidden)]
 const WNDCLASS_NAME: &str = "maple_wndclass";
@@ -42,9 +43,7 @@ impl Window {
             _pin: PhantomPinned,
         }));
 
-        // Should be TitleConv::<WNDCLASS_NAME.len() + 1>::new() but that's
-        // not supported by the compiler yet.
-        let mut class_name = TitleConv::<16>::new(WNDCLASS_NAME);
+        let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
         let hmodule = unsafe { GetModuleHandleW(None) };
         assert_ne!(hmodule, HINSTANCE::NULL);
@@ -53,21 +52,19 @@ impl Window {
             style: CS_VREDRAW | CS_HREDRAW,
             hInstance: hmodule,
             lpfnWndProc: Some(wndproc),
-            lpszClassName: class_name.as_pwstr(),
+            lpszClassName: PWSTR(class_name.as_mut_ptr()),
             ..WNDCLASSW::default()
         };
 
         let _ = unsafe { RegisterClassW(&class) };
 
-        let mut w_title =
-            TitleConv::<MAX_TITLE_LENGTH>::new(&title[0..min(MAX_TITLE_LENGTH, title.len())]);
-        let ptr: *mut RefCell<WindowData> = window_data.as_mut() as *mut _;
+        let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(title);
 
         let hwnd = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                class_name.as_pwstr(),
-                w_title.as_pwstr(),
+                PWSTR(class_name.as_mut_ptr()),
+                PWSTR(w_title.as_mut_ptr()),
                 WS_OVERLAPPEDWINDOW,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -76,7 +73,7 @@ impl Window {
                 None,
                 None,
                 GetModuleHandleW(None),
-                ptr.cast(),
+                window_data.as_mut() as *mut _ as _,
             )
         };
 
@@ -174,24 +171,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
-#[doc(hidden)]
-struct TitleConv<const CAPACITY: usize> {
-    buffer: [u16; CAPACITY],
-}
+fn to_wstr<const MAX_LENGTH: usize>(s: &str) -> ArrayVec<u16, MAX_LENGTH> {
+    assert!(MAX_LENGTH > 0);
 
-impl<const CAPACITY: usize> TitleConv<CAPACITY> {
-    fn new(s: &str) -> Self {
-        let mut buffer = [0; CAPACITY];
-        for (i, utf16) in s.encode_utf16().enumerate() {
-            buffer[i] = utf16;
-        }
+    let mut buffer = ArrayVec::from_iter(s.encode_utf16());
+    let len  = buffer.len();
 
-        buffer[buffer.len() - 1] = 0;
-
-        TitleConv { buffer }
+    if len == buffer.capacity() {
+        buffer[len - 1] = 0;
+    }
+    else {
+        buffer.push(0);
     }
 
-    fn as_pwstr(&mut self) -> PWSTR {
-        PWSTR(self.buffer.as_mut_ptr())
-    }
+    buffer
 }

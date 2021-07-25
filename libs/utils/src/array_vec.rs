@@ -1,4 +1,4 @@
-use std::mem::MaybeUninit;
+use std::{iter::FromIterator, mem::MaybeUninit};
 
 /// A fixed-capacity vector of T. Attempting to add elements beyond its
 /// capacity will cause a panic.
@@ -42,7 +42,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
 
     /// Retrieves a pointer to the first element of the vector without checking
     /// for the vector's length.
-    unsafe fn as_ptr_unchecked(&self) -> *const T {
+    pub unsafe fn as_ptr_unchecked(&self) -> *const T {
         (*self.array.as_ptr()).as_ptr()
     }
 
@@ -56,9 +56,9 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
-    /// Retrieves a mutable pionter to the first element of the vector without
+    /// Retrieves a mutable pointer to the first element of the vector without
     /// checking the vector's length.
-    unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
+    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
         (*self.array.as_mut_ptr()).as_mut_ptr()
     }
 
@@ -99,6 +99,24 @@ impl<T, const N: usize> ArrayVec<T, N> {
             panic!("ArrayVec out of capacity");
         }
     }
+
+    /// Creates a by-reference iterator over the elements in the vector.
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, T> {
+        self.as_slice().iter()
+    }
+
+    /// Sets the length of the vector to `length`.
+    ///
+    /// # Panics
+    /// This function will panic if `length` is greater than `N`.
+    pub unsafe fn set_len(&mut self, length: usize) {
+        if length <= N {
+            self.length = length as u32;
+        }
+        else {
+            panic!("attempted to set length on ArrayVec outside of bounds.");
+        }
+    }
 }
 
 impl<T, const N: usize> Default for ArrayVec<T, N> {
@@ -121,6 +139,60 @@ impl<T, const N: usize> Drop for ArrayVec<T, N> {
 impl<T: std::fmt::Debug, const N: usize> std::fmt::Debug for ArrayVec<T, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         f.debug_list().entries(self.as_slice()).finish()
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a ArrayVec<T, N> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> std::slice::Iter<'a, T> {
+        self.as_slice().iter()
+    }
+}
+
+impl<T, const N: usize> std::ops::Index<usize> for ArrayVec<T, N> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        // let slice do the bounds checking for us
+        &self.as_slice()[index]
+    }
+}
+
+impl<T, const N: usize> std::ops::IndexMut<usize> for ArrayVec<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        // let slice do the bounds checking for us
+        &mut self.as_mut_slice()[index as usize]
+    }
+}
+
+impl<T, const N: usize> FromIterator<T> for ArrayVec<T, N> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut vec = Self::default();
+
+        let mut ptr = &mut vec.array as *mut _ as *mut T;
+        let mut length = 0;
+        let mut it = iter.into_iter();
+
+        let end = unsafe { ptr.add(N) };
+
+        while let Some(v) = it.next() {
+            if ptr == end {
+                break;
+            }
+
+            unsafe {
+                ptr.write(v);
+                ptr = ptr.add(1);
+                length += 1;
+            }
+        }
+
+        assert!(length <= N);
+        unsafe { vec.set_len(length) };
+
+        vec
     }
 }
 
@@ -182,5 +254,32 @@ mod tests {
         std::mem::drop(vec);
 
         unsafe { assert_eq!(K, 3) };
+    }
+
+    #[test]
+    fn array_vec_from_iter() {
+        {
+            // Saturating 0-sized array
+            let vec = ArrayVec::<u32, 0>::from_iter(std::iter::repeat(100));
+
+            assert_eq!(vec.len(), 0);
+            assert_eq!(vec.len(), vec.capacity());
+            assert_eq!(vec.as_slice(), []);
+        }
+        {
+            // Saturating N-sized array
+            let vec = ArrayVec::<u32, 4>::from_iter(std::iter::repeat(100));
+    
+            assert_eq!(vec.len(), 4);
+            assert_eq!(vec.len(), vec.capacity());
+            assert_eq!(vec.as_slice(), [100, 100, 100, 100]);
+        }
+        {
+            // Underfilling N-sized array
+            let vec = ArrayVec::<u32, 4>::from_iter(std::iter::once(100));
+
+            assert_eq!(vec.len(), 1);
+            assert_eq!(vec.as_slice(), [100]);
+        }
     }
 }
