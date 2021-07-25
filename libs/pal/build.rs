@@ -19,7 +19,7 @@ fn build_apis() {
             },
             UI::WindowsAndMessaging::{
                 WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
-                WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_DESTROY,
+                WM_CREATE, WM_CLOSE, WM_QUIT, WM_DESTROY,
                 RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
                 PeekMessageW, TranslateMessage, DispatchMessageW,
                 SetWindowLongPtrW, GetWindowLongPtrW,

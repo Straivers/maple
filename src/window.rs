@@ -145,14 +145,14 @@ impl EventLoop {
 
 #[doc(hidden)]
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if msg == WM_NCCREATE {
+    if msg == WM_CREATE {
         let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, cs.lpCreateParams as _);
 
         let window = cs.lpCreateParams.cast::<RefCell<WindowData>>();
         (*window).borrow_mut().hwnd = hwnd;
 
-        return LRESULT(1);
+        return LRESULT::default()
     }
 
     let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<WindowData>;
