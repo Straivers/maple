@@ -55,7 +55,7 @@ pub struct VulkanContext {
 }
 
 impl VulkanContext {
-    pub fn new() -> Result<Self, RendererError> {
+    pub fn new(_use_validation: bool) -> Result<Self, RendererError> {
         let library = {
             let os_library = unsafe {
                 let lib = LoadLibraryA("vulkan-1");
