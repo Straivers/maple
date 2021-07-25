@@ -1,9 +1,7 @@
 mod renderer;
 mod window;
 
-extern crate clap;
 use clap::{App, Arg};
-
 use window::{EventLoop, Window};
 
 #[derive(Debug)]
