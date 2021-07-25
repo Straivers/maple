@@ -1,21 +1,19 @@
+mod renderer;
 mod window;
-use window::*;
+
+use window::{EventLoop, Window};
 
 fn main() {
+    let mut vk_context = renderer::context::VulkanContext::new().unwrap();
+
     let mut event_loop = EventLoop::new();
     let mut windows = Vec::new();
     windows.push(create_window(&event_loop, "Title 1"));
-    windows.push(create_window(&event_loop, "Title 2"));
-    windows.push(create_window(&event_loop, "Title 3"));
-    windows.push(create_window(&event_loop, "Title 4"));
-    windows.push(create_window(&event_loop, "Title 5"));
 
     while !windows.is_empty() {
         event_loop.poll();
 
-        windows.retain(|window| {
-            !window.was_close_requested()
-        });
+        windows.retain(|window| !window.was_close_requested());
     }
 }
 

@@ -6,8 +6,17 @@ fn main() {
 fn build_apis() {
     windows::build! {
         Windows::Win32::{
-            Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR},
-            System::{LibraryLoader::{GetModuleHandleW}},
+            Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR, PSTR},
+            System::{
+                LibraryLoader::{
+                    GetModuleHandleW,
+                    GetProcAddress,
+                    LoadLibraryA
+                },
+                Diagnostics::Debug::{
+                    SetErrorMode,
+                }
+            },
             UI::WindowsAndMessaging::{
                 WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
                 WM_NCCREATE, WM_CLOSE, WM_QUIT, WM_DESTROY,

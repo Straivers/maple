@@ -1,6 +1,5 @@
 use pal::win32::{
-    Foundation::*,
-    System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*,
+    Foundation::*, System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*,
 };
 use std::{cell::RefCell, cmp::min, marker::PhantomPinned};
 
@@ -27,6 +26,7 @@ struct WindowData {
 /// Note, however, that some window activities such as processing the close
 /// button, minimizing, or resizing require that the `EventLoop` be polled
 /// frequently.
+#[derive(Debug)]
 pub struct Window {
     #[doc(hidden)]
     window_data: Box<RefCell<WindowData>>,
@@ -76,7 +76,7 @@ impl Window {
                 None,
                 None,
                 GetModuleHandleW(None),
-                ptr as _,
+                ptr.cast(),
             )
         };
 
@@ -108,7 +108,8 @@ impl Drop for Window {
 // windows.
 pub struct EventLoop {
     // So that we get /* fields omitted */ in the docs
-    #[doc(hidden)] _empty: u8
+    #[doc(hidden)]
+    _empty: u8,
 }
 
 impl EventLoop {
@@ -178,7 +179,7 @@ struct TitleConv<const CAPACITY: usize> {
     buffer: [u16; CAPACITY],
 }
 
-impl <const CAPACITY: usize> TitleConv<CAPACITY> {
+impl<const CAPACITY: usize> TitleConv<CAPACITY> {
     fn new(s: &str) -> Self {
         let mut buffer = [0; CAPACITY];
         for (i, utf16) in s.encode_utf16().enumerate() {
