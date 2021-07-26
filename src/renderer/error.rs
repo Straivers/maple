@@ -1,5 +1,7 @@
 use pal::vulkan::vk;
 
+pub type RendererResult<T> = Result<T, RendererError>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RendererError {
     LibraryNotFound(&'static str),

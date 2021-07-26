@@ -36,7 +36,7 @@ fn main() {
 }
 
 fn run(cli_options: &CliOptions) {
-    let mut vk_context =
+    let _vk_context =
         renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
 
     let mut event_loop = EventLoop::new();

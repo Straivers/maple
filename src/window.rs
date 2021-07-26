@@ -1,10 +1,17 @@
 use pal::win32::{
-    Foundation::*, System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*,
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
+    System::LibraryLoader::GetModuleHandleW,
+    UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW,
+        PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+        CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WNDCLASSW,
+        WS_OVERLAPPEDWINDOW,
+    },
 };
-use std::{cell::RefCell, cmp::min, iter::FromIterator, marker::PhantomPinned};
+use std::{cell::RefCell, ffi::c_void, marker::PhantomPinned};
 use utils::array_vec::ArrayVec;
 
-#[doc(hidden)]
 const WNDCLASS_NAME: &str = "maple_wndclass";
 
 /// The maximum number of characters that the window title can be, in UTF-8 code
@@ -13,7 +20,6 @@ const WNDCLASS_NAME: &str = "maple_wndclass";
 /// That is to say: at most 255 characters, plus the '\0' character.
 pub const MAX_TITLE_LENGTH: usize = 256;
 
-#[doc(hidden)]
 #[derive(Default, Debug)]
 struct WindowData {
     hwnd: HWND,
@@ -29,12 +35,12 @@ struct WindowData {
 /// frequently.
 #[derive(Debug)]
 pub struct Window {
-    #[doc(hidden)]
     window_data: Box<RefCell<WindowData>>,
 }
 
 impl Window {
     /// Creates a new window and associates it with the event loop.
+    #[must_use]
     pub fn new(_: &EventLoop, title: &str) -> Self {
         // let mut window = Box::new(Self::default());
         let mut window_data = Box::new(RefCell::new(WindowData {
@@ -73,7 +79,7 @@ impl Window {
                 None,
                 None,
                 GetModuleHandleW(None),
-                window_data.as_mut() as *mut _ as _,
+                (window_data.as_mut() as *mut RefCell<_>).cast::<c_void>(),
             )
         };
 
@@ -84,6 +90,7 @@ impl Window {
 
     /// Checks if the user requested that the window be closed (by clicking the
     /// close button).
+    #[must_use]
     pub fn was_close_requested(&self) -> bool {
         self.window_data.borrow().was_close_requested
     }
@@ -149,7 +156,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         let window = cs.lpCreateParams.cast::<RefCell<WindowData>>();
         (*window).borrow_mut().hwnd = hwnd;
 
-        return LRESULT::default()
+        return LRESULT::default();
     }
 
     let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<WindowData>;
@@ -171,16 +178,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
+#[doc(hidden)]
 fn to_wstr<const MAX_LENGTH: usize>(s: &str) -> ArrayVec<u16, MAX_LENGTH> {
     assert!(MAX_LENGTH > 0);
 
-    let mut buffer = ArrayVec::from_iter(s.encode_utf16());
-    let len  = buffer.len();
+    let mut buffer = s.encode_utf16().collect::<ArrayVec<_, MAX_LENGTH>>();
+    let len = buffer.len();
 
     if len == buffer.capacity() {
         buffer[len - 1] = 0;
-    }
-    else {
+    } else {
         buffer.push(0);
     }
 
