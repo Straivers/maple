@@ -10,64 +10,47 @@ pub struct ArrayVec<T, const N: usize> {
 
 impl<T, const N: usize> ArrayVec<T, N> {
     /// Create a new fized-capacity vector on the stack.
-    #[must_use]
+    
     pub fn new() -> Self {
         Self::default()
     }
 
     /// The number of elements in the vector.
+    
     pub fn len(&self) -> usize {
         self.length as usize
     }
 
     /// Shorthand for `len() == 0`
+    
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
 
     /// The statically determined capacity for the vector.
+    
     pub fn capacity(&self) -> usize {
         N
     }
 
-    /// Retrieves a pointer to the first element of the vector. The returned
-    /// pointer will be null if `is_empty()`.
+    /// Retrieves a pointer to the front of the reserved buffer. Only elements
+    /// `0..len()` are guaranteed to have been initialized.
     pub fn as_ptr(&self) -> *const T {
-        if self.is_empty() {
-            std::ptr::null()
-        } else {
-            unsafe { self.as_ptr_unchecked() }
-        }
+        unsafe { (*self.array.as_ptr()).as_ptr() }
     }
 
-    /// Retrieves a pointer to the first element of the vector without checking
-    /// for the vector's length.
-    pub unsafe fn as_ptr_unchecked(&self) -> *const T {
-        (*self.array.as_ptr()).as_ptr()
-    }
-
-    /// Retrieves a mutable pointer to the first element of the vector. The
-    /// returned pointer will be null if `is_empty()`.
+    /// Retrieves a mutable pointer to the front of the reserved buffer. Only
+    /// elements `0..len()` are guaranteed to have been initialized.
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        if self.is_empty() {
-            std::ptr::null_mut()
-        } else {
-            unsafe { self.as_mut_ptr_unchecked() }
-        }
+        unsafe { (*self.array.as_mut_ptr()).as_mut_ptr() }
     }
 
-    /// Retrieves a mutable pointer to the first element of the vector without
-    /// checking the vector's length.
-    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
-        (*self.array.as_mut_ptr()).as_mut_ptr()
-    }
-
-    /// Produces a slice spanning the entire vector.
+    /// Produces a slice spanning the entire vector.    
     pub fn as_slice(&self) -> &[T] {
         if self.is_empty() {
             &[]
         } else {
-            unsafe { std::slice::from_raw_parts(self.as_ptr_unchecked(), self.length as usize) }
+            unsafe { std::slice::from_raw_parts(self.as_ptr(), self.length as usize) }
         }
     }
 
@@ -77,7 +60,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
             &mut []
         } else {
             unsafe {
-                std::slice::from_raw_parts_mut(self.as_mut_ptr_unchecked(), self.length as usize)
+                std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.length as usize)
             }
         }
     }
@@ -89,7 +72,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
     pub fn push(&mut self, value: T) {
         if (self.length as usize) < N {
             unsafe {
-                self.as_mut_ptr_unchecked()
+                self.as_mut_ptr()
                     .add(self.length as usize)
                     .write(value)
             };
@@ -106,6 +89,10 @@ impl<T, const N: usize> ArrayVec<T, N> {
     }
 
     /// Sets the length of the vector to `length`.
+    ///
+    /// # Safety
+    /// Make sure that the elements `0 .. length` have been initialized.
+    /// Accessing uninitialized elements is undefined behavior.
     ///
     /// # Panics
     /// This function will panic if `length` is greater than `N`.
@@ -168,16 +155,18 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for ArrayVec<T, N> {
 }
 
 impl<T, const N: usize> FromIterator<T> for ArrayVec<T, N> {
+    /// Creates a new ArrayVec, and fills it with values from the iterator. The
+    /// ArrayVec will take as many elements as the iterator contains, up to N
+    /// elements.
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut vec = Self::default();
 
         let mut ptr = &mut vec.array as *mut _ as *mut T;
         let mut length = 0;
-        let mut it = iter.into_iter();
 
         let end = unsafe { ptr.add(N) };
 
-        while let Some(v) = it.next() {
+        for v in iter.into_iter() {
             if ptr == end {
                 break;
             }

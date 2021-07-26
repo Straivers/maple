@@ -262,7 +262,7 @@ fn load_physical_devices(
             .enumerate_physical_devices(
                 instance.handle(),
                 &mut num_physical_devices,
-                buffer.as_mut_ptr_unchecked(),
+                buffer.as_mut_ptr(),
             )
             .result()?;
 
@@ -297,7 +297,7 @@ fn load_queue_families(
             .get_physical_device_queue_family_properties(
                 physical_device,
                 &mut num_queue_families,
-                buffer.as_mut_ptr_unchecked(),
+                buffer.as_mut_ptr(),
             );
 
         buffer.set_len(num_queue_families as usize);
