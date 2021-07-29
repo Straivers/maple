@@ -13,3 +13,6 @@ utils = { path = "libs/utils" }
 [dependencies.clap]
 version = "2.33"
 default-features = false
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "1.6"

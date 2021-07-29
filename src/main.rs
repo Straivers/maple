@@ -43,6 +43,9 @@ fn run(cli_options: &CliOptions) {
     let mut windows = Vec::new();
     windows.push(create_window(&event_loop, "Title 1"));
 
+    use pal::win32::UI::HiDpi::GetProcessDpiAwareness;
+    unsafe { println!("{:?}", GetProcessDpiAwareness(None)); }
+
     while !windows.is_empty() {
         event_loop.poll();
 
