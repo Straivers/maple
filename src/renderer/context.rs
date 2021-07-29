@@ -8,7 +8,7 @@ use std::{
 use pal::{
     vulkan::{
         vk, DebugUtils, Device, DeviceV1_0, EntryCustom, EntryV1_0, Instance, InstanceV1_0,
-        LoadError, Surface, VkError, Win32Surface,
+        LoadError, Surface, Swapchain, VkError, Win32Surface,
     },
     win32::{
         Foundation::{HINSTANCE, PSTR},
@@ -30,6 +30,7 @@ const VALIDATION_LAYER_NAME: *const c_char = "VK_LAYER_KHRONOS_validation\0".as_
 const SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_surface\0".as_ptr().cast();
 const DEBUG_UTILS_EXTENSION_NAME: *const c_char = "VK_EXT_debug_utils\0\0".as_ptr().cast();
 const WIN32_SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_win32_surface\0".as_ptr().cast();
+const SWAPCHAIN_EXTENSION_NAME: *const c_char = "VK_KHR_swapchain\0".as_ptr().cast();
 
 pub struct VulkanDebug {
     api: DebugUtils,
@@ -43,8 +44,12 @@ pub struct VulkanContext {
     physical_device: Gpu,
     device: Device,
 
-    surface_api: Surface,
-    os_surface_api: Win32Surface,
+    graphics_queue: vk::Queue,
+    present_queue: vk::Queue,
+
+    pub surface_api: Surface,
+    pub os_surface_api: Win32Surface,
+    pub swapchain_api: Swapchain,
 
     debug: Option<VulkanDebug>,
 }
@@ -153,20 +158,31 @@ impl VulkanContext {
 
             let features: vk::PhysicalDeviceFeatures = unsafe { std::mem::zeroed() };
 
+            let extensions = ArrayVec::<_, 1>::from_iter([SWAPCHAIN_EXTENSION_NAME]);
+
             let create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(queue_create_infos.as_slice())
+                .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
             unsafe { instance.create_device(physical_device.handle, &create_info, None) }?
         };
+
+        let swapchain_api = Swapchain::new(&instance, &device);
+
+        let graphics_queue = unsafe { device.get_device_queue(physical_device.graphics_queue_index, 0) };
+        let present_queue = unsafe { device.get_device_queue(physical_device.present_queue_index, 0) };
 
         Ok(Self {
             library,
             instance,
             physical_device,
             device,
+            graphics_queue,
+            present_queue,
             surface_api,
             os_surface_api,
+            swapchain_api,
             debug,
         })
     }
