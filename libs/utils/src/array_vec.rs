@@ -101,7 +101,6 @@ impl<T, const N: usize> ArrayVec<T, N> {
     ///
     /// # Panics
     /// This function will panic if `length` is greater than `N`.
-    #[must_use]
     pub unsafe fn set_len(&mut self, length: usize) {
         if length <= N {
             self.length = length as u32;
