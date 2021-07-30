@@ -161,7 +161,7 @@ impl Swapchain {
     pub(crate) fn destroy(self, context: &VulkanContext) {
         unsafe {
             for image in self.images {
-                context.destroy_image_view(image.view, None);
+                context.device.destroy_image_view(image.view, None);
             }
 
             context.swapchain_api.destroy_swapchain(self.handle, None);
@@ -189,7 +189,7 @@ fn get_swapchain_images(
 ) -> RendererResult<()> {
     let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
         context.swapchain_api.fp().get_swapchain_images_khr(
-            context.handle(),
+            context.device.handle(),
             swapchain,
             count,
             ptr,
@@ -198,7 +198,7 @@ fn get_swapchain_images(
 
     for slot in buffer.iter_mut() {
         assert_ne!(slot.view, vk::ImageView::default());
-        unsafe { context.destroy_image_view(slot.view, None) };
+        unsafe { context.device.destroy_image_view(slot.view, None) };
     }
 
     buffer.clear();
@@ -220,7 +220,7 @@ fn get_swapchain_images(
     for image in &images {
         let view = {
             view_create_info.image = *image;
-            unsafe { context.create_image_view(&view_create_info, None) }?
+            unsafe { context.device.create_image_view(&view_create_info, None) }?
         };
 
         buffer.push(SwapchainImage {

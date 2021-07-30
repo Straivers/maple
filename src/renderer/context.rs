@@ -192,17 +192,9 @@ impl Drop for VulkanContext {
                     .destroy_debug_utils_messenger(debug.callback, None);
             }
 
-            self.destroy_device(None);
+            self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }
-    }
-}
-
-impl std::ops::Deref for VulkanContext {
-    type Target = Device;
-
-    fn deref(&self) -> &Self::Target {
-        &self.device
     }
 }
 
