@@ -1,39 +1,23 @@
 use super::context::{load_vk_objects, VulkanContext};
 use super::error::RendererResult;
-use crate::window::Window;
+use crate::window::{Window};
 
-use pal::vulkan::{
-    vk::{self, Handle},
-    DeviceV1_0,
-};
-#[cfg(target_os = "windows")]
-use pal::win32::System::LibraryLoader::GetModuleHandleW;
-use std::convert::TryInto;
-use std::mem::ManuallyDrop;
+use pal::vulkan::{vk, DeviceV1_0};
 
 /// Triple buffering
 const NUM_FRAMEBUFFERS: usize = 3;
+const MAX_SWAPCHAIN_IMAGES: usize = 32;
 
-union SwapchainFrameResource<T: vk::Handle> {
-    // These are Vulkan handles, so we don't need to drop them
-    inline: ManuallyDrop<[T; NUM_FRAMEBUFFERS]>,
-    heap: ManuallyDrop<Vec<T>>,
+#[derive(Debug, Default)]
+struct SwapchainImage {
+    image: vk::Image,
+    view: vk::ImageView,
+    // acquire_semaphore: vk::Semaphore
+    // present_semaphore: vk::Semaphore
 }
 
-impl<T: vk::Handle> SwapchainFrameResource<T> {
-    fn get_slice(&self, count: usize) -> &[T] {
-        if count <= NUM_FRAMEBUFFERS {
-            unsafe { &self.inline[0..count] }
-        } else {
-            unsafe { self.heap.as_slice() }
-        }
-    }
-}
-
+#[derive(Debug)]
 pub struct Swapchain {
-    /// The number of images used by the swapchain.
-    num_images: u8,
-
     /// The index of the current frame into the frame resources.
     frame_index: u8,
 
@@ -52,17 +36,7 @@ pub struct Swapchain {
     handle: vk::SwapchainKHR,
 
     /// The images used by the swapchain.
-    images: SwapchainFrameResource<vk::Image>,
-
-    /// Views of the swapchain images; one per image.
-    views: SwapchainFrameResource<vk::ImageView>,
-    // Semaphores used to indicate when a swapchain image is ready to be
-    // rendered to.
-    // acquire_semaphores: SwapchainFrameResource<vk::Semaphore>,
-
-    // Semaphores used to indicate when a swapchain image is ready to be
-    // presented to the screen.
-    // release_semaphores: SwapchainFrameResource<vk::Semaphore>,
+    images: Vec<SwapchainImage>,
 }
 
 impl Swapchain {
@@ -172,57 +146,10 @@ impl Swapchain {
             unsafe { context.swapchain_api.create_swapchain(&create_info, None) }?
         };
 
-        let mut num_images = 0;
-        unsafe {
-            context.swapchain_api.fp().get_swapchain_images_khr(
-                context.device.handle(),
-                swapchain,
-                &mut num_images,
-                std::ptr::null_mut(),
-            )
-        }
-        .result()?;
-
-        let images = get_swapchain_frame_resource(num_images, |slice| unsafe {
-            let mut count = slice.len().try_into().unwrap();
-            context
-                .swapchain_api
-                .fp()
-                .get_swapchain_images_khr(
-                    context.device.handle(),
-                    swapchain,
-                    &mut count,
-                    slice.as_mut_ptr(),
-                )
-                .result()?;
-            Ok(())
-        })?;
-
-        println!("{:?}", images.get_slice(num_images as usize));
-
-        let views = get_swapchain_frame_resource(num_images, |slice| unsafe {
-            let mut create_info = vk::ImageViewCreateInfo::builder()
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(format.format)
-                .components(vk::ComponentMapping::default())
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            for (i, img) in images.get_slice(num_images as usize).iter().enumerate() {
-                create_info.image = *img;
-                slice[i] = context.device.create_image_view(&create_info, None)?;
-            }
-            Ok(())
-        })?;
+        let mut images = Vec::new();
+        get_swapchain_images(context, swapchain, format.format, &mut images)?;
 
         Ok(Swapchain {
-            num_images: num_images.try_into().expect("Too many swapchain images"),
             frame_index: 0,
             format: format.format,
             color_space: format.color_space,
@@ -230,14 +157,13 @@ impl Swapchain {
             surface,
             handle: swapchain,
             images,
-            views,
         })
     }
 
     pub(crate) fn destroy(self, context: &VulkanContext) {
         unsafe {
-            for view in self.views.get_slice(self.num_images as usize) {
-                context.device.destroy_image_view(*view, None);
+            for image in self.images {
+                context.device.destroy_image_view(image.view, None);
             }
 
             context.swapchain_api.destroy_swapchain(self.handle, None);
@@ -248,6 +174,8 @@ impl Swapchain {
 
 #[cfg(target_os = "windows")]
 fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk::SurfaceKHR> {
+    use pal::win32::System::LibraryLoader::GetModuleHandleW;
+
     let hinstance = unsafe { GetModuleHandleW(None) };
     let ci = vk::Win32SurfaceCreateInfoKHR::builder()
         .hwnd(window.get_hwnd().0 as _)
@@ -255,46 +183,57 @@ fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk
     Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
 }
 
-struct SwapchainProperties {
+fn get_swapchain_images(
+    context: &VulkanContext,
+    swapchain: vk::SwapchainKHR,
     format: vk::Format,
-    extent: vk::Extent2D,
-    color_space: vk::ColorSpaceKHR,
-    present_mode: vk::PresentModeKHR,
-}
+    buffer: &mut Vec<SwapchainImage>,
+) -> RendererResult<()> {
+    let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
+        context.swapchain_api.fp().get_swapchain_images_khr(
+            context.device.handle(),
+            swapchain,
+            count,
+            ptr,
+        )
+    })?;
 
-fn get_swapchain_frame_resource<
-    T: Handle + Default + Copy,
-    F: FnMut(&mut [T]) -> RendererResult<()>,
->(
-    required_size: u32,
-    mut func: F,
-) -> RendererResult<SwapchainFrameResource<T>> {
-    let size = required_size as usize;
-    if size <= NUM_FRAMEBUFFERS {
-        let mut buffer = [T::default(); NUM_FRAMEBUFFERS];
-        func(&mut buffer[0..size])?;
-        Ok(SwapchainFrameResource::<T> {
-            inline: ManuallyDrop::new(buffer),
+    if images.len() < buffer.len() {
+        for image in &buffer[images.len()..] {
+            // We'll destroy unused semaphores here
+            // Ideally, return these semaphores to a shared pool
+            unsafe { context.device.destroy_image_view(image.view, None) };
+        }
+    }
+
+    // We'll create new semaphores here
+    // Ideally, we'd get semaphores from a shared pool
+    buffer.resize_with(images.len(), || SwapchainImage::default());
+
+    let mut view_create_info = vk::ImageViewCreateInfo::builder()
+        .view_type(vk::ImageViewType::TYPE_2D)
+        .format(format)
+        .components(vk::ComponentMapping::default())
+        .subresource_range(vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
         })
-    } else {
-        let mut buffer = Vec::with_capacity(size);
-        func(&mut buffer[0..size])?;
-        unsafe { buffer.set_len(size) };
-        Ok(SwapchainFrameResource::<T> {
-            heap: ManuallyDrop::new(buffer),
+        .build();
+
+    for image in &images {
+        let view = {
+            view_create_info.image = *image;
+            unsafe { context.device.create_image_view(&view_create_info, None) }?
+        };
+
+        buffer.push(SwapchainImage {
+            image: *image,
+            view,
         })
     }
-}
 
-#[test]
-fn test() {
-    use std::mem::size_of;
-    assert_eq!(
-        size_of::<SwapchainFrameResource<vk::Image>>(),
-        3 * size_of::<usize>()
-    );
-    assert_eq!(
-        size_of::<SwapchainFrameResource<vk::ImageView>>(),
-        3 * size_of::<usize>()
-    );
+    Ok(())
 }
