@@ -1,5 +1,6 @@
 use std::{
     cmp::min,
+    convert::TryInto,
     ffi::{c_void, CStr},
     iter::FromIterator,
     os::raw::c_char,
@@ -41,11 +42,11 @@ pub struct VulkanContext {
     #[allow(dead_code)]
     library: EntryCustom<HINSTANCE>,
     instance: Instance,
-    physical_device: Gpu,
-    device: Device,
+    pub gpu: Gpu,
+    pub device: Device,
 
-    graphics_queue: vk::Queue,
-    present_queue: vk::Queue,
+    pub graphics_queue: vk::Queue,
+    pub present_queue: vk::Queue,
 
     pub surface_api: Surface,
     pub os_surface_api: Win32Surface,
@@ -55,7 +56,6 @@ pub struct VulkanContext {
 }
 
 impl VulkanContext {
-    #[must_use]
     pub fn new(use_validation: bool) -> RendererResult<Self> {
         let library = {
             let os_library = unsafe {
@@ -76,16 +76,13 @@ impl VulkanContext {
             })
         };
 
-        let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT {
-            s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            p_next: std::ptr::null(),
-            flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-            message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-            message_type: vk::DebugUtilsMessageTypeFlagsEXT::all(),
-            pfn_user_callback: Some(debug_callback),
-            p_user_data: std::ptr::null_mut(),
-        };
+        let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+            )
+            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .pfn_user_callback(Some(debug_callback));
 
         let instance = {
             let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_1);
@@ -136,23 +133,21 @@ impl VulkanContext {
         let surface_api = Surface::new(&library, &instance);
         let os_surface_api = Win32Surface::new(&library, &instance);
 
-        let physical_device = select_physical_device(&instance, &os_surface_api)?;
+        let gpu = select_physical_device(&instance, &os_surface_api)?;
 
         let device = {
             let mut queue_create_infos = ArrayVec::<vk::DeviceQueueCreateInfo, 2>::new();
             queue_create_infos.push(
-                vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(physical_device.graphics_queue_index)
-                    .queue_priorities(&[1.0])
-                    .build(),
+                *vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(gpu.graphics_queue_index)
+                    .queue_priorities(&[1.0]),
             );
 
-            if physical_device.present_queue_index != physical_device.graphics_queue_index {
+            if gpu.present_queue_index != gpu.graphics_queue_index {
                 queue_create_infos.push(
-                    vk::DeviceQueueCreateInfo::builder()
-                        .queue_family_index(physical_device.present_queue_index)
-                        .queue_priorities(&[1.0])
-                        .build(),
+                    *vk::DeviceQueueCreateInfo::builder()
+                        .queue_family_index(gpu.present_queue_index)
+                        .queue_priorities(&[1.0]),
                 );
             }
 
@@ -165,18 +160,18 @@ impl VulkanContext {
                 .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
-            unsafe { instance.create_device(physical_device.handle, &create_info, None) }?
+            unsafe { instance.create_device(gpu.handle, &create_info, None) }?
         };
 
         let swapchain_api = Swapchain::new(&instance, &device);
 
-        let graphics_queue = unsafe { device.get_device_queue(physical_device.graphics_queue_index, 0) };
-        let present_queue = unsafe { device.get_device_queue(physical_device.present_queue_index, 0) };
+        let present_queue = unsafe { device.get_device_queue(gpu.present_queue_index, 0) };
+        let graphics_queue = unsafe { device.get_device_queue(gpu.graphics_queue_index, 0) };
 
         Ok(Self {
             library,
             instance,
-            physical_device,
+            gpu,
             device,
             graphics_queue,
             present_queue,
@@ -216,16 +211,31 @@ unsafe extern "system" fn debug_callback(
 }
 
 #[doc(hidden)]
-struct Gpu {
-    handle: vk::PhysicalDevice,
-    graphics_queue_index: u32,
-    present_queue_index: u32,
+pub struct Gpu {
+    pub handle: vk::PhysicalDevice,
+    pub graphics_queue_index: u32,
+    pub present_queue_index: u32,
 }
 
 #[doc(hidden)]
 fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> RendererResult<Gpu> {
-    for physical_device in &load_physical_devices(instance)? {
-        let queue_families = load_queue_families(instance, *physical_device);
+    let physical_devices = load_vk_objects::<_, _, MAX_PHYSICAL_DEVICES>(|count, ptr| unsafe {
+        instance
+            .fp_v1_0()
+            .enumerate_physical_devices(instance.handle(), count, ptr)
+    })?;
+
+    for physical_device in &physical_devices {
+        let queue_families = load_vk_objects::<_, _, MAX_QUEUE_FAMILIES>(|count, ptr| {
+            unsafe {
+                instance
+                    .fp_v1_0()
+                    .get_physical_device_queue_family_properties(*physical_device, count, ptr);
+            }
+
+            vk::Result::SUCCESS
+        })
+        .unwrap();
 
         let mut graphics = None;
         let mut present = None;
@@ -237,7 +247,7 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
             if unsafe {
                 surface_api.get_physical_device_win32_presentation_support(
                     *physical_device,
-                    queue_family_index as u32,
+                    queue_family_index.try_into().unwrap(),
                 )
             } {
                 present = Some(queue_family_index);
@@ -246,8 +256,8 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
             if let Some((graphics_i, present_i)) = graphics.zip(present) {
                 return Ok(Gpu {
                     handle: *physical_device,
-                    graphics_queue_index: graphics_i as u32,
-                    present_queue_index: present_i as u32,
+                    graphics_queue_index: graphics_i.try_into().unwrap(),
+                    present_queue_index: present_i.try_into().unwrap(),
                 });
             }
         }
@@ -256,68 +266,21 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
     Err(RendererError::NoSuitableGPU)
 }
 
-fn load_physical_devices(
-    instance: &Instance,
-) -> RendererResult<ArrayVec<vk::PhysicalDevice, MAX_PHYSICAL_DEVICES>> {
-    let mut num_physical_devices = 0;
-    unsafe {
-        instance.fp_v1_0().enumerate_physical_devices(
-            instance.handle(),
-            &mut num_physical_devices,
-            std::ptr::null_mut(),
-        )
-    }
-    .result()?;
+pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(
+    mut func: F,
+) -> RendererResult<ArrayVec<T, COUNT>>
+where
+    F: FnMut(*mut u32, *mut T) -> vk::Result,
+{
+    let mut count = 0;
+
+    func(&mut count, std::ptr::null_mut()).result()?;
 
     let mut buffer = ArrayVec::new();
-    num_physical_devices = min(num_physical_devices, buffer.capacity() as u32);
+    count = min(count, buffer.capacity().try_into().unwrap());
 
-    unsafe {
-        instance
-            .fp_v1_0()
-            .enumerate_physical_devices(
-                instance.handle(),
-                &mut num_physical_devices,
-                buffer.as_mut_ptr(),
-            )
-            .result()?;
-
-        buffer.set_len(num_physical_devices as usize);
-    }
+    func(&mut count, buffer.as_mut_ptr()).result()?;
+    unsafe { buffer.set_len(count as usize) };
 
     Ok(buffer)
-}
-
-fn load_queue_families(
-    instance: &Instance,
-    physical_device: vk::PhysicalDevice,
-) -> ArrayVec<vk::QueueFamilyProperties, MAX_QUEUE_FAMILIES> {
-    let mut num_queue_families = 0;
-
-    unsafe {
-        instance
-            .fp_v1_0()
-            .get_physical_device_queue_family_properties(
-                physical_device,
-                &mut num_queue_families,
-                std::ptr::null_mut(),
-            )
-    };
-
-    let mut buffer = ArrayVec::new();
-    num_queue_families = min(num_queue_families, buffer.capacity() as u32);
-
-    unsafe {
-        instance
-            .fp_v1_0()
-            .get_physical_device_queue_family_properties(
-                physical_device,
-                &mut num_queue_families,
-                buffer.as_mut_ptr(),
-            );
-
-        buffer.set_len(num_queue_families as usize);
-    }
-
-    buffer
 }

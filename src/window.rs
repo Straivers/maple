@@ -1,15 +1,15 @@
 use pal::win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
-    System::LibraryLoader::GetModuleHandleW,
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
+    System::{Diagnostics::Debug::GetLastError, LibraryLoader::GetModuleHandleW},
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW,
-        PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
-        CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE,
-        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WNDCLASSW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+        GetWindowLongPtrW, PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow,
+        TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG,
+        PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WNDCLASSW,
         WS_OVERLAPPEDWINDOW,
     },
 };
-use std::{cell::RefCell, ffi::c_void, marker::PhantomPinned};
+use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
 use utils::array_vec::ArrayVec;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
@@ -25,6 +25,11 @@ struct WindowData {
     hwnd: HWND,
     was_close_requested: bool,
     _pin: PhantomPinned,
+}
+
+pub struct WindowSize {
+    pub width: u32,
+    pub height: u32,
 }
 
 /// A window created by the operating system's window manager. The OS window will
@@ -94,6 +99,32 @@ impl Window {
     pub fn was_close_requested(&self) -> bool {
         self.window_data.borrow().was_close_requested
     }
+
+    #[cfg(target_os = "windows")]
+    #[must_use]
+    pub fn get_hwnd(&self) -> HWND {
+        self.window_data.borrow().hwnd
+    }
+
+    #[must_use]
+    pub fn framebuffer_size(&self) -> WindowSize {
+        let mut rect = RECT::default();
+
+        if unsafe { GetClientRect(self.window_data.borrow().hwnd, &mut rect) } == false {
+            panic!("Unable to retrieve framebuffer size: {:?}", unsafe {
+                GetLastError()
+            });
+        }
+
+        WindowSize {
+            width: (rect.right - rect.left)
+                .try_into()
+                .expect("Unrepresentable framebuffer size"),
+            height: (rect.bottom - rect.top)
+                .try_into()
+                .expect("Unrepresentable framebuffer size"),
+        }
+    }
 }
 
 impl Drop for Window {
@@ -128,6 +159,7 @@ impl EventLoop {
     ///
     /// Make sure to call this on the same thread that the OS windows were
     /// created.
+    #[allow(clippy::unused_self)]
     pub fn poll(&mut self) {
         // Note: Performance here is probably not great, as you have to call
         // `poll()` for every window that you have. If you want to reduce
@@ -148,6 +180,7 @@ impl EventLoop {
 }
 
 #[doc(hidden)]
+#[allow(clippy::similar_names)]
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_CREATE {
         let cs: &CREATESTRUCTW = std::mem::transmute(lparam);

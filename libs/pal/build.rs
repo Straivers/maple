@@ -6,7 +6,7 @@ fn main() {
 fn build_apis() {
     windows::build! {
         Windows::Win32::{
-            Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR, PSTR},
+            Foundation::{HWND, HINSTANCE, LPARAM, WPARAM, PWSTR, PSTR, RECT},
             System::{
                 LibraryLoader::{
                     GetModuleHandleW,
@@ -14,6 +14,7 @@ fn build_apis() {
                     LoadLibraryA
                 },
                 Diagnostics::Debug::{
+                    GetLastError,
                     SetErrorMode,
                 }
             },
@@ -23,7 +24,7 @@ fn build_apis() {
                     WM_CREATE, WM_CLOSE, WM_QUIT, WM_DESTROY,
                     RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
                     PeekMessageW, TranslateMessage, DispatchMessageW,
-                    SetWindowLongPtrW, GetWindowLongPtrW,
+                    SetWindowLongPtrW, GetWindowLongPtrW, GetClientRect,
                 },
                 HiDpi::GetProcessDpiAwareness,
             },

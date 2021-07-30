@@ -36,21 +36,27 @@ fn main() {
 }
 
 fn run(cli_options: &CliOptions) {
-    let _vk_context =
+    use pal::win32::UI::HiDpi::GetProcessDpiAwareness;
+
+    let vk_context =
         renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
 
     let mut event_loop = EventLoop::new();
-    let mut windows = Vec::new();
-    windows.push(create_window(&event_loop, "Title 1"));
+    let mut windows = vec![create_window(&event_loop, "Title 1")];
 
-    use pal::win32::UI::HiDpi::GetProcessDpiAwareness;
-    unsafe { println!("{:?}", GetProcessDpiAwareness(None)); }
+    let swapchain = renderer::swapchain::Swapchain::new(&vk_context, &windows[0]).unwrap();
+
+    unsafe {
+        println!("{:?}", GetProcessDpiAwareness(None));
+    }
 
     while !windows.is_empty() {
         event_loop.poll();
 
         windows.retain(|window| !window.was_close_requested());
     }
+
+    swapchain.destroy(&vk_context);
 }
 
 fn create_window(event_loop: &EventLoop, title: &str) -> Window {
