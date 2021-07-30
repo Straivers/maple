@@ -1,19 +1,17 @@
 use super::context::{load_vk_objects, VulkanContext};
 use super::error::RendererResult;
-use crate::window::{Window};
+use crate::window::Window;
 
 use pal::vulkan::{vk, DeviceV1_0};
 
 /// Triple buffering
-const NUM_FRAMEBUFFERS: usize = 3;
+const FRAMES_IN_FLIGHT: usize = 3;
 const MAX_SWAPCHAIN_IMAGES: usize = 32;
 
 #[derive(Debug, Default)]
 struct SwapchainImage {
     image: vk::Image,
     view: vk::ImageView,
-    // acquire_semaphore: vk::Semaphore
-    // present_semaphore: vk::Semaphore
 }
 
 #[derive(Debug)]
@@ -113,7 +111,7 @@ impl Swapchain {
             }
         };
 
-        let min_images = (NUM_FRAMEBUFFERS as u32)
+        let min_images = (FRAMES_IN_FLIGHT as u32)
             .clamp(capabilities.min_image_count, capabilities.max_image_count);
 
         let swapchain = {
@@ -198,17 +196,13 @@ fn get_swapchain_images(
         )
     })?;
 
-    if images.len() < buffer.len() {
-        for image in &buffer[images.len()..] {
-            // We'll destroy unused semaphores here
-            // Ideally, return these semaphores to a shared pool
-            unsafe { context.device.destroy_image_view(image.view, None) };
-        }
+    for slot in buffer.iter_mut() {
+        assert_ne!(slot.view, vk::ImageView::default());
+        unsafe { context.device.destroy_image_view(slot.view, None) };
     }
 
-    // We'll create new semaphores here
-    // Ideally, we'd get semaphores from a shared pool
-    buffer.resize_with(images.len(), || SwapchainImage::default());
+    buffer.clear();
+    buffer.reserve(images.len());
 
     let mut view_create_info = vk::ImageViewCreateInfo::builder()
         .view_type(vk::ImageViewType::TYPE_2D)
