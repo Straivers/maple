@@ -2,7 +2,7 @@ use super::context::{load_vk_objects, VulkanContext};
 use super::error::RendererResult;
 use windowing::Window;
 
-use pal::vulkan::{vk, DeviceV1_0};
+use ash::{version::DeviceV1_0, vk};
 
 /// Triple buffering
 const FRAMES_IN_FLIGHT: usize = 3;
@@ -187,7 +187,7 @@ impl Swapchain {
 
 #[cfg(target_os = "windows")]
 fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk::SurfaceKHR> {
-    use pal::win32::System::LibraryLoader::GetModuleHandleW;
+    use win32::System::LibraryLoader::GetModuleHandleW;
 
     let hinstance = unsafe { GetModuleHandleW(None) };
     let ci = vk::Win32SurfaceCreateInfoKHR::builder()

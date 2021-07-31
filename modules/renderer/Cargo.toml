@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-pal = { path = "../pal" }
+ash = { version = "0.32.1", default-features = false }
+win32 = { path = "../win32" }
 utils = { path = "../utils" }
 windowing = { path = "../windowing" }

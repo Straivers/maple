@@ -6,17 +6,24 @@ use std::{
     os::raw::c_char,
 };
 
-use pal::{
-    vulkan::{
-        vk, DebugUtils, Device, DeviceV1_0, EntryCustom, EntryV1_0, Instance, InstanceV1_0, LoadError, Surface,
-        Swapchain, VkError, Win32Surface,
+use ash::{
+    extensions::{
+        ext::DebugUtils,
+        khr::{Surface, Swapchain, Win32Surface},
     },
-    win32::{
-        Foundation::{HINSTANCE, PSTR},
-        System::{
-            Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS},
-            LibraryLoader::{GetProcAddress, LoadLibraryA},
-        },
+    version::{
+        DeviceV1_0,
+        EntryV1_0,
+        InstanceV1_0,
+    },
+    vk, Device, EntryCustom, Instance, InstanceError::*,
+};
+
+use win32::{
+    Foundation::{HINSTANCE, PSTR},
+    System::{
+        Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS},
+        LibraryLoader::{GetProcAddress, LoadLibraryA},
     },
 };
 

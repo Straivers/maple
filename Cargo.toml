@@ -16,8 +16,8 @@ embed-resource = "1.6"
 
 [workspace]
 members = [
-    "modules/pal",
     "modules/renderer",
     "modules/utils",
+    "modules/win32",
     "modules/windowing",
 ]

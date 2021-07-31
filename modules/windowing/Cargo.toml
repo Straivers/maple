@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-pal = { path = "../pal" }
 utils = { path = "../utils" }
+
+[target.'cfg(windows)'.dependencies]
+win32 = { path = "../win32" }

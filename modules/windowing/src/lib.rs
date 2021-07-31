@@ -1,4 +1,4 @@
-use pal::win32::{
+use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{Diagnostics::Debug::GetLastError, LibraryLoader::GetModuleHandleW},
     UI::WindowsAndMessaging::{

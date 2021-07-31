@@ -1,6 +1,6 @@
 use std::num::NonZeroI32;
 
-use pal::vulkan::vk;
+use ash::vk;
 
 pub type RendererResult<T> = Result<T, RendererError>;
 

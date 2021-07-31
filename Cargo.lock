@@ -65,14 +65,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pal"
-version = "0.1.0"
-dependencies = [
- "ash",
- "windows",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -94,8 +86,9 @@ dependencies = [
 name = "renderer"
 version = "0.1.0"
 dependencies = [
- "pal",
+ "ash",
  "utils",
+ "win32",
  "windowing",
 ]
 
@@ -156,6 +149,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "win32"
+version = "0.1.0"
+dependencies = [
+ "windows",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -181,8 +181,8 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "windowing"
 version = "0.1.0"
 dependencies = [
- "pal",
  "utils",
+ "win32",
 ]
 
 [[package]]
