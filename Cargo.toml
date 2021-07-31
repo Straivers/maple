@@ -1,18 +1,8 @@
-[package]
-name = "maple"
-version = "0.1.0"
-edition = "2018"
-
-[profile.release]
-debug = true
-
-[dependencies]
-windowing = { path="modules/windowing" }
-renderer = { path="modules/renderer" }
-
-[dependencies.clap]
-version = "2.33"
-default-features = false
-
-[target.'cfg(windows)'.build-dependencies]
-embed-resource = "1.6"
+[workspace]
+members = [
+    "modules/pal",
+    "modules/renderer",
+    "modules/utils",
+    "modules/windowing",
+    "sandbox"
+]
