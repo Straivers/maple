@@ -26,6 +26,7 @@ use super::error::{RendererError, RendererResult};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
+const SYNC_POOL_SIZE: usize = 128;
 
 const VALIDATION_LAYER_NAME: *const c_char = "VK_LAYER_KHRONOS_validation\0".as_ptr().cast();
 const SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_surface\0".as_ptr().cast();
@@ -51,6 +52,9 @@ pub struct VulkanContext {
     pub surface_api: Surface,
     pub os_surface_api: Win32Surface,
     pub swapchain_api: Swapchain,
+
+    fence_pool: ArrayVec<vk::Fence, SYNC_POOL_SIZE>,
+    semaphore_pool: ArrayVec<vk::Semaphore, SYNC_POOL_SIZE>,
 
     debug: Option<VulkanDebug>,
 }
@@ -88,24 +92,20 @@ impl VulkanContext {
             let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_1);
 
             let mut layers = ArrayVec::<*const c_char, 1>::new();
-            let mut extensions = ArrayVec::<*const c_char, 3>::from_iter([
-                SURFACE_EXTENSION_NAME,
-                WIN32_SURFACE_EXTENSION_NAME,
-            ]);
+            let mut extensions =
+                ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
+
+            let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
 
             if use_validation {
                 layers.push(VALIDATION_LAYER_NAME);
                 extensions.push(DEBUG_UTILS_EXTENSION_NAME);
-            }
-
-            let mut create_info = vk::InstanceCreateInfo::builder()
-                .application_info(&app_info)
-                .enabled_layer_names(layers.as_slice())
-                .enabled_extension_names(extensions.as_slice());
-
-            if use_validation {
                 create_info = create_info.push_next(&mut debug_callback_create_info);
             }
+
+            create_info = create_info
+                .enabled_layer_names(layers.as_slice())
+                .enabled_extension_names(extensions.as_slice());
 
             match unsafe { library.create_instance(&create_info, None) } {
                 Ok(instance) => instance,
@@ -168,6 +168,28 @@ impl VulkanContext {
         let present_queue = unsafe { device.get_device_queue(gpu.present_queue_index, 0) };
         let graphics_queue = unsafe { device.get_device_queue(gpu.graphics_queue_index, 0) };
 
+        let fence_pool = {
+            let mut pool = ArrayVec::new();
+
+            for _ in 0..SYNC_POOL_SIZE {
+                let ci = vk::FenceCreateInfo::builder();
+                pool.push(unsafe { device.create_fence(&ci, None) }?);
+            }
+
+            pool
+        };
+
+        let semaphore_pool = {
+            let mut pool = ArrayVec::new();
+
+            for _ in 0..SYNC_POOL_SIZE {
+                let ci = vk::SemaphoreCreateInfo::builder();
+                pool.push(unsafe { device.create_semaphore(&ci, None) }?);
+            }
+
+            pool
+        };
+
         Ok(Self {
             library,
             instance,
@@ -178,14 +200,77 @@ impl VulkanContext {
             surface_api,
             os_surface_api,
             swapchain_api,
+            fence_pool,
+            semaphore_pool,
             debug,
         })
+    }
+
+    /// Fetches a fence from the context's pool, or creates a new one. If the
+    /// fence needs to be signalled, a new one will be created.
+    pub fn get_or_create_fence(&mut self, signalled: bool) -> RendererResult<vk::Fence> {
+        if signalled {
+            let ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            Ok(unsafe { self.device.create_fence(&ci, None) }?)
+        } else if let Some(fence) = self.fence_pool.pop() {
+            Ok(fence)
+        } else {
+            let ci = vk::FenceCreateInfo::builder();
+            Ok(unsafe { self.device.create_fence(&ci, None) }?)
+        }
+    }
+
+    /// Returns a fence to the context's pool, or destroys it if the fence pool
+    /// is at capacity.
+    pub fn free_fence(&mut self, fence: vk::Fence) {
+        unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
+
+        if self.fence_pool.is_full() {
+            unsafe {
+                self.device.destroy_fence(fence, None);
+            }
+        } else {
+            self.fence_pool.push(fence);
+        }
+    }
+
+    /// Fetches a semaphore from the context's pool, or creates a new one.
+    pub fn get_or_create_semaphore(&mut self) -> RendererResult<vk::Semaphore> {
+        if let Some(semaphore) = self.semaphore_pool.pop() {
+            Ok(semaphore)
+        } else {
+            let ci = vk::SemaphoreCreateInfo::builder();
+            Ok(unsafe { self.device.create_semaphore(&ci, None) }?)
+        }
+    }
+
+    /// Returns a semaphore to the context's pool, or destroys it if the
+    /// semaphore pool is at capacity.
+    pub fn free_semaphore(&mut self, semaphore: vk::Semaphore) {
+        if self.semaphore_pool.is_full() {
+            unsafe {
+                self.device.destroy_semaphore(semaphore, None);
+            }
+        } else {
+            self.semaphore_pool.push(semaphore);
+        }
     }
 }
 
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
+            // We're shutting down, so ignore errors
+            let _ = self.device.device_wait_idle();
+
+            for fence in &self.fence_pool {
+                self.device.destroy_fence(*fence, None);
+            }
+
+            for semaphore in &self.semaphore_pool {
+                self.device.destroy_semaphore(*semaphore, None);
+            }
+
             if let Some(debug) = self.debug.as_ref() {
                 debug
                     .api
@@ -280,7 +365,9 @@ where
     count = min(count, buffer.capacity().try_into().unwrap());
 
     func(&mut count, buffer.as_mut_ptr()).result()?;
-    unsafe { buffer.set_len(count as usize) };
+    unsafe {
+        buffer.set_len(count as usize);
+    }
 
     Ok(buffer)
 }

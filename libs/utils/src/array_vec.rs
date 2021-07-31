@@ -27,6 +27,12 @@ impl<T, const N: usize> ArrayVec<T, N> {
         self.length == 0
     }
 
+    /// Returns true if the array has reached full capacity.
+    #[must_use]
+    pub fn is_full(&self) -> bool {
+        self.len() == self.capacity()
+    }
+
     /// The statically determined capacity for the vector.
     #[must_use]
     pub fn capacity(&self) -> usize {
@@ -87,6 +93,18 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
+    pub fn pop(&mut self) -> Option<T> {
+        if self.length > 0 {
+            unsafe {
+                self.set_len(self.len() - 1);
+                Some(std::ptr::read(self.as_ptr().add(self.len())))
+            }
+        }
+        else {
+            None
+        }
+    }
+
     /// Creates a by-reference iterator over the elements in the vector.
     #[must_use]
     pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, T> {
@@ -129,6 +147,19 @@ impl<T, const N: usize> Drop for ArrayVec<T, N> {
     }
 }
 
+impl<T, const N: usize> std::ops::Deref for ArrayVec<T, N> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T, const N: usize> std::ops::DerefMut for ArrayVec<T, N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
 impl<T: std::fmt::Debug, const N: usize> std::fmt::Debug for ArrayVec<T, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         f.debug_list().entries(self.as_slice()).finish()
@@ -160,6 +191,22 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for ArrayVec<T, N> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // let slice do the bounds checking for us
         &mut self.as_mut_slice()[index as usize]
+    }
+}
+
+impl<T, const N1: usize, const N2: usize> From<[T; N1]> for ArrayVec<T, N2> 
+where T: Copy {
+    fn from(slice: [T; N1]) -> Self
+     {
+        assert!(N1 <= N2);
+        let mut vec = Self::default();
+        let vec_slice = {
+            let ptr = &mut vec.array as *mut _ as *mut T;
+            unsafe { std::slice::from_raw_parts_mut(ptr, N1) }
+        };
+        vec_slice.copy_from_slice(&slice);
+        unsafe { vec.set_len(N1) };
+        vec
     }
 }
 

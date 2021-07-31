@@ -15,6 +15,12 @@ struct SwapchainImage {
 }
 
 #[derive(Debug)]
+struct SwapchainSync {
+    acquire_semaphore: vk::Semaphore,
+    present_semaphore: vk::Semaphore,
+}
+
+#[derive(Debug)]
 pub struct Swapchain {
     /// The index of the current frame into the frame resources.
     frame_index: u8,
@@ -35,10 +41,12 @@ pub struct Swapchain {
 
     /// The images used by the swapchain.
     images: Vec<SwapchainImage>,
+
+    sync_objects: [SwapchainSync; FRAMES_IN_FLIGHT],
 }
 
 impl Swapchain {
-    pub fn new(context: &VulkanContext, window: &Window) -> RendererResult<Self> {
+    pub fn new(context: &mut VulkanContext, window: &Window) -> RendererResult<Self> {
         let surface = create_surface(context, window)?;
 
         // We test with platform-specific APIs during surface creation
@@ -147,6 +155,21 @@ impl Swapchain {
         let mut images = Vec::new();
         get_swapchain_images(context, swapchain, format.format, &mut images)?;
 
+        let sync_objects = [
+            SwapchainSync {
+                acquire_semaphore: context.get_or_create_semaphore()?,
+                present_semaphore: context.get_or_create_semaphore()?,
+            },
+            SwapchainSync {
+                acquire_semaphore: context.get_or_create_semaphore()?,
+                present_semaphore: context.get_or_create_semaphore()?,
+            },
+            SwapchainSync {
+                acquire_semaphore: context.get_or_create_semaphore()?,
+                present_semaphore: context.get_or_create_semaphore()?,
+            },
+        ];
+
         Ok(Swapchain {
             frame_index: 0,
             format: format.format,
@@ -155,13 +178,19 @@ impl Swapchain {
             surface,
             handle: swapchain,
             images,
+            sync_objects,
         })
     }
 
-    pub(crate) fn destroy(self, context: &VulkanContext) {
+    pub(crate) fn destroy(self, context: &mut VulkanContext) {
         unsafe {
             for image in self.images {
                 context.device.destroy_image_view(image.view, None);
+            }
+
+            for sync in self.sync_objects {
+                context.free_semaphore(sync.acquire_semaphore);
+                context.free_semaphore(sync.present_semaphore);
             }
 
             context.swapchain_api.destroy_swapchain(self.handle, None);
@@ -198,7 +227,9 @@ fn get_swapchain_images(
 
     for slot in buffer.iter_mut() {
         assert_ne!(slot.view, vk::ImageView::default());
-        unsafe { context.device.destroy_image_view(slot.view, None) };
+        unsafe {
+            context.device.destroy_image_view(slot.view, None);
+        }
     }
 
     buffer.clear();
@@ -226,7 +257,7 @@ fn get_swapchain_images(
         buffer.push(SwapchainImage {
             image: *image,
             view,
-        })
+        });
     }
 
     Ok(())

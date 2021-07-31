@@ -1,3 +1,5 @@
+#[deny(missing_docs)]
+
 mod renderer;
 mod window;
 
@@ -38,13 +40,13 @@ fn main() {
 fn run(cli_options: &CliOptions) {
     use pal::win32::UI::HiDpi::GetProcessDpiAwareness;
 
-    let vk_context =
+    let mut vk_context =
         renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
 
     let mut event_loop = EventLoop::new();
     let mut windows = vec![create_window(&event_loop, "Title 1")];
 
-    let swapchain = renderer::swapchain::Swapchain::new(&vk_context, &windows[0]).unwrap();
+    let swapchain = renderer::swapchain::Swapchain::new(&mut vk_context, &windows[0]).unwrap();
 
     unsafe {
         println!("{:?}", GetProcessDpiAwareness(None));
@@ -56,7 +58,7 @@ fn run(cli_options: &CliOptions) {
         windows.retain(|window| !window.was_close_requested());
     }
 
-    swapchain.destroy(&vk_context);
+    swapchain.destroy(&mut vk_context);
 }
 
 fn create_window(event_loop: &EventLoop, title: &str) -> Window {
