@@ -93,6 +93,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
+    #[must_use]
     pub fn pop(&mut self) -> Option<T> {
         if self.length > 0 {
             unsafe {
@@ -170,7 +171,6 @@ impl<'a, T, const N: usize> IntoIterator for &'a ArrayVec<T, N> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
 
-    #[must_use]
     fn into_iter(self) -> std::slice::Iter<'a, T> {
         self.as_slice().iter()
     }
@@ -179,7 +179,6 @@ impl<'a, T, const N: usize> IntoIterator for &'a ArrayVec<T, N> {
 impl<T, const N: usize> std::ops::Index<usize> for ArrayVec<T, N> {
     type Output = T;
 
-    #[must_use]
     fn index(&self, index: usize) -> &Self::Output {
         // let slice do the bounds checking for us
         &self.as_slice()[index]
@@ -187,7 +186,6 @@ impl<T, const N: usize> std::ops::Index<usize> for ArrayVec<T, N> {
 }
 
 impl<T, const N: usize> std::ops::IndexMut<usize> for ArrayVec<T, N> {
-    #[must_use]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // let slice do the bounds checking for us
         &mut self.as_mut_slice()[index as usize]

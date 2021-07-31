@@ -43,7 +43,7 @@ pub struct VulkanContext {
     #[allow(dead_code)]
     library: EntryCustom<HINSTANCE>,
     instance: Instance,
-    pub gpu: Gpu,
+    pub(crate) gpu: Gpu,
     pub device: Device,
 
     pub graphics_queue: vk::Queue,
@@ -283,7 +283,6 @@ impl Drop for VulkanContext {
     }
 }
 
-#[doc(hidden)]
 unsafe extern "system" fn debug_callback(
     _severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _message_type: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -295,14 +294,12 @@ unsafe extern "system" fn debug_callback(
     vk::FALSE
 }
 
-#[doc(hidden)]
-pub struct Gpu {
+pub(crate) struct Gpu {
     pub handle: vk::PhysicalDevice,
     pub graphics_queue_index: u32,
     pub present_queue_index: u32,
 }
 
-#[doc(hidden)]
 fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> RendererResult<Gpu> {
     let physical_devices = load_vk_objects::<_, _, MAX_PHYSICAL_DEVICES>(|count, ptr| unsafe {
         instance

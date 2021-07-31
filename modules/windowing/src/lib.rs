@@ -179,7 +179,6 @@ impl EventLoop {
     }
 }
 
-#[doc(hidden)]
 #[allow(clippy::similar_names)]
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_CREATE {
@@ -211,7 +210,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
-#[doc(hidden)]
 fn to_wstr<const MAX_LENGTH: usize>(s: &str) -> ArrayVec<u16, MAX_LENGTH> {
     assert!(MAX_LENGTH > 0);
 
