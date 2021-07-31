@@ -1,3 +1,5 @@
+//! Maple Engine entry point
+
 use clap::{App, Arg};
 use windowing::{EventLoop, Window};
 
@@ -33,8 +35,7 @@ fn main() {
 }
 
 fn run(cli_options: &CliOptions) {
-    let mut vk_context =
-        renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
+    let mut vk_context = renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
 
     let mut event_loop = EventLoop::new();
     let mut windows = vec![create_window(&event_loop, "Title 1")];

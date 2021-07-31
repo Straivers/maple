@@ -2,11 +2,10 @@ use pal::win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{Diagnostics::Debug::GetLastError, LibraryLoader::GetModuleHandleW},
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-        GetWindowLongPtrW, PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow,
-        TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG,
-        PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WNDCLASSW,
-        WS_OVERLAPPEDWINDOW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetWindowLongPtrW,
+        PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW,
+        CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE,
+        WM_DESTROY, WM_QUIT, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
@@ -111,9 +110,7 @@ impl Window {
         let mut rect = RECT::default();
 
         if unsafe { GetClientRect(self.window_data.borrow().hwnd, &mut rect) } == false {
-            panic!("Unable to retrieve framebuffer size: {:?}", unsafe {
-                GetLastError()
-            });
+            panic!("Unable to retrieve framebuffer size: {:?}", unsafe { GetLastError() });
         }
 
         WindowSize {

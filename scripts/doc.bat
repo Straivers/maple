@@ -1,2 +1,10 @@
 :: Generates documents for only the modules in the file
-cargo doc -p pal -p renderer -p utils -p windowing -p sandbox --no-deps --open
+@echo off
+setlocal
+    :: set RUSTDOCFLAGS=--Zunstable-options
+
+    cargo clean --doc
+    cargo doc --workspace --no-deps --open
+    :: cargo +nightly doc --no-deps --open
+endlocal
+@echo on

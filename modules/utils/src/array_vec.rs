@@ -69,9 +69,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
         if self.is_empty() {
             &mut []
         } else {
-            unsafe {
-                std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.length as usize)
-            }
+            unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.length as usize) }
         }
     }
 
@@ -81,11 +79,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
     /// This function will panic if the vector is at capacity.
     pub fn push(&mut self, value: T) {
         if (self.length as usize) < N {
-            unsafe {
-                self.as_mut_ptr()
-                    .add(self.length as usize)
-                    .write(value)
-            };
+            unsafe { self.as_mut_ptr().add(self.length as usize).write(value) };
 
             self.length += 1;
         } else {
@@ -100,8 +94,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
                 self.set_len(self.len() - 1);
                 Some(std::ptr::read(self.as_ptr().add(self.len())))
             }
-        }
-        else {
+        } else {
             None
         }
     }
@@ -123,8 +116,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
     pub unsafe fn set_len(&mut self, length: usize) {
         if length <= N {
             self.length = length as u32;
-        }
-        else {
+        } else {
             panic!("attempted to set length on ArrayVec outside of bounds.");
         }
     }
@@ -192,10 +184,11 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for ArrayVec<T, N> {
     }
 }
 
-impl<T, const N1: usize, const N2: usize> From<[T; N1]> for ArrayVec<T, N2> 
-where T: Copy {
-    fn from(slice: [T; N1]) -> Self
-     {
+impl<T, const N1: usize, const N2: usize> From<[T; N1]> for ArrayVec<T, N2>
+where
+    T: Copy,
+{
+    fn from(slice: [T; N1]) -> Self {
         assert!(N1 <= N2);
         let mut vec = Self::default();
         let vec_slice = {
@@ -312,7 +305,7 @@ mod tests {
         {
             // Saturating N-sized array
             let vec = ArrayVec::<u32, 4>::from_iter(std::iter::repeat(100));
-    
+
             assert_eq!(vec.len(), 4);
             assert_eq!(vec.len(), vec.capacity());
             assert_eq!(vec.as_slice(), [100, 100, 100, 100]);

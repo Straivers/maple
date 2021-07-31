@@ -8,8 +8,8 @@ use std::{
 
 use pal::{
     vulkan::{
-        vk, DebugUtils, Device, DeviceV1_0, EntryCustom, EntryV1_0, Instance, InstanceV1_0,
-        LoadError, Surface, Swapchain, VkError, Win32Surface,
+        vk, DebugUtils, Device, DeviceV1_0, EntryCustom, EntryV1_0, Instance, InstanceV1_0, LoadError, Surface,
+        Swapchain, VkError, Win32Surface,
     },
     win32::{
         Foundation::{HINSTANCE, PSTR},
@@ -82,18 +82,16 @@ impl VulkanContext {
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
-                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
             )
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(debug_callback));
 
         let instance = {
-            let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_1);
+            let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
 
             let mut layers = ArrayVec::<*const c_char, 1>::new();
-            let mut extensions =
-                ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
+            let mut extensions = ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
 
             let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
 
@@ -110,11 +108,10 @@ impl VulkanContext {
             match unsafe { library.create_instance(&create_info, None) } {
                 Ok(instance) => instance,
                 Err(err) => match err {
-                    LoadError(missing_ext_layers) => panic!(
-                        "Required layers/extensions not found: {:?}",
-                        missing_ext_layers
-                    ),
-                    VkError(vk_error) => return Err(RendererError::VulkanError(vk_error)),
+                    LoadError(missing_ext_layers) => {
+                        panic!("Required layers/extensions not found: {:?}", missing_ext_layers)
+                    }
+                    VkError(vk_error) => return Err(RendererError::from(vk_error)),
                 },
             }
         };
@@ -122,10 +119,7 @@ impl VulkanContext {
         let debug = if use_validation {
             let ut = DebugUtils::new(&library, &instance);
             let cb = unsafe { ut.create_debug_utils_messenger(&debug_callback_create_info, None) }?;
-            Some(VulkanDebug {
-                api: ut,
-                callback: cb,
-            })
+            Some(VulkanDebug { api: ut, callback: cb })
         } else {
             None
         };
@@ -272,9 +266,7 @@ impl Drop for VulkanContext {
             }
 
             if let Some(debug) = self.debug.as_ref() {
-                debug
-                    .api
-                    .destroy_debug_utils_messenger(debug.callback, None);
+                debug.api.destroy_debug_utils_messenger(debug.callback, None);
             }
 
             self.device.destroy_device(None);
@@ -348,9 +340,7 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
     Err(RendererError::NoSuitableGPU)
 }
 
-pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(
-    mut func: F,
-) -> RendererResult<ArrayVec<T, COUNT>>
+pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> RendererResult<ArrayVec<T, COUNT>>
 where
     F: FnMut(*mut u32, *mut T) -> vk::Result,
 {

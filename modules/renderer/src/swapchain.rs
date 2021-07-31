@@ -66,36 +66,27 @@ impl Swapchain {
 
         let format = {
             let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
-                context
-                    .surface_api
-                    .fp()
-                    .get_physical_device_surface_formats_khr(
-                        context.gpu.handle,
-                        surface,
-                        count,
-                        ptr,
-                    )
-            })?;
-
-            *formats
-                .iter()
-                .find(|f| {
-                    f.format == vk::Format::B8G8R8A8_SRGB
-                        && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-                })
-                .unwrap_or(&formats[0])
-        };
-
-        let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
-            context
-                .surface_api
-                .fp()
-                .get_physical_device_surface_present_modes_khr(
+                context.surface_api.fp().get_physical_device_surface_formats_khr(
                     context.gpu.handle,
                     surface,
                     count,
                     ptr,
                 )
+            })?;
+
+            *formats
+                .iter()
+                .find(|f| f.format == vk::Format::B8G8R8A8_SRGB && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                .unwrap_or(&formats[0])
+        };
+
+        let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
+            context.surface_api.fp().get_physical_device_surface_present_modes_khr(
+                context.gpu.handle,
+                surface,
+                count,
+                ptr,
+            )
         })?
         .iter()
         .find(|p| **p == vk::PresentModeKHR::MAILBOX)
@@ -105,10 +96,9 @@ impl Swapchain {
             if capabilities.current_extent.width == u32::MAX {
                 let size = window.framebuffer_size();
                 vk::Extent2D {
-                    width: size.width.clamp(
-                        capabilities.min_image_extent.width,
-                        capabilities.max_image_extent.width,
-                    ),
+                    width: size
+                        .width
+                        .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
                     height: size.height.clamp(
                         capabilities.min_image_extent.height,
                         capabilities.max_image_extent.height,
@@ -119,8 +109,7 @@ impl Swapchain {
             }
         };
 
-        let min_images = (FRAMES_IN_FLIGHT as u32)
-            .clamp(capabilities.min_image_count, capabilities.max_image_count);
+        let min_images = (FRAMES_IN_FLIGHT as u32).clamp(capabilities.min_image_count, capabilities.max_image_count);
 
         let swapchain = {
             let mut create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -136,10 +125,7 @@ impl Swapchain {
                 .present_mode(present_mode)
                 .clipped(true);
 
-            let queue_family_indices = [
-                context.gpu.graphics_queue_index,
-                context.gpu.present_queue_index,
-            ];
+            let queue_family_indices = [context.gpu.graphics_queue_index, context.gpu.present_queue_index];
 
             create_info = if queue_family_indices[0] == queue_family_indices[1] {
                 create_info.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -217,12 +203,10 @@ fn get_swapchain_images(
     buffer: &mut Vec<SwapchainImage>,
 ) -> RendererResult<()> {
     let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
-        context.swapchain_api.fp().get_swapchain_images_khr(
-            context.device.handle(),
-            swapchain,
-            count,
-            ptr,
-        )
+        context
+            .swapchain_api
+            .fp()
+            .get_swapchain_images_khr(context.device.handle(), swapchain, count, ptr)
     })?;
 
     for slot in buffer.iter_mut() {
@@ -254,10 +238,7 @@ fn get_swapchain_images(
             unsafe { context.device.create_image_view(&view_create_info, None) }?
         };
 
-        buffer.push(SwapchainImage {
-            image: *image,
-            view,
-        });
+        buffer.push(SwapchainImage { image: *image, view });
     }
 
     Ok(())
