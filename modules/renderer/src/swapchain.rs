@@ -1,6 +1,6 @@
 use super::context::{load_vk_objects, VulkanContext};
 use super::error::RendererResult;
-use crate::window::Window;
+use windowing::Window;
 
 use pal::vulkan::{vk, DeviceV1_0};
 
@@ -182,7 +182,7 @@ impl Swapchain {
         })
     }
 
-    pub(crate) fn destroy(self, context: &mut VulkanContext) {
+    pub fn destroy(self, context: &mut VulkanContext) {
         unsafe {
             for image in self.images {
                 context.device.destroy_image_view(image.view, None);

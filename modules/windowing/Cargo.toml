@@ -1,0 +1,8 @@
+[package]
+name = "windowing"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+pal = { path = "../pal" }
+utils = { path = "../utils" }

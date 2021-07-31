@@ -1,10 +1,5 @@
-#[deny(missing_docs)]
-
-mod renderer;
-mod window;
-
 use clap::{App, Arg};
-use window::{EventLoop, Window};
+use windowing::{EventLoop, Window};
 
 #[derive(Debug)]
 struct CliOptions {
@@ -38,8 +33,6 @@ fn main() {
 }
 
 fn run(cli_options: &CliOptions) {
-    use pal::win32::UI::HiDpi::GetProcessDpiAwareness;
-
     let mut vk_context =
         renderer::context::VulkanContext::new(cli_options.enable_vulkan_validation).unwrap();
 
@@ -47,10 +40,6 @@ fn run(cli_options: &CliOptions) {
     let mut windows = vec![create_window(&event_loop, "Title 1")];
 
     let swapchain = renderer::swapchain::Swapchain::new(&mut vk_context, &windows[0]).unwrap();
-
-    unsafe {
-        println!("{:?}", GetProcessDpiAwareness(None));
-    }
 
     while !windows.is_empty() {
         event_loop.poll();

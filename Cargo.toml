@@ -7,8 +7,8 @@ edition = "2018"
 debug = true
 
 [dependencies]
-pal = { path = "libs/pal" }
-utils = { path = "libs/utils" }
+windowing = { path="modules/windowing" }
+renderer = { path="modules/renderer" }
 
 [dependencies.clap]
 version = "2.33"
