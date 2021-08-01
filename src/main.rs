@@ -1,5 +1,11 @@
 //! Maple Engine entry point
 
+// shaders need to be built every time they change...
+// applications don't always know which shaders they're going to need ahead of time
+    // shaders should be compiled ahead of time for release
+    // shaders should be recompiled on command during debug
+    // maple runner is a debug-only tool right now, can afford runtime compilation
+
 use clap::{App, Arg};
 use windowing::{EventLoop, Window};
 
@@ -41,16 +47,40 @@ fn run(cli_options: &CliOptions) {
     let mut windows = vec![create_window(&event_loop, "Title 1")];
 
     let swapchain = renderer::swapchain::Swapchain::new(&mut vk_context, &windows[0]).unwrap();
+    // let pipeline = create_triangle_pipeline(swapchain.format)
+    // let framebuffers = pipeline.create_framebuffers(swapchain.image_views);
 
     while !windows.is_empty() {
         event_loop.poll();
 
+        /*
+        for window in windows {
+            if window.was_resized() {
+                // pipelines are refcounted...?
+            }
+        }
+        */
+
         windows.retain(|window| !window.was_close_requested());
     }
 
+    // pipeline.free_framebuffers(framebuffers);
+    // pipeline.destroy(&mut vk_context);
     swapchain.destroy(&mut vk_context);
 }
 
 fn create_window(event_loop: &EventLoop, title: &str) -> Window {
     Window::new(event_loop, title)
 }
+
+// Notes on renderer:
+// let swapchain = renderer.create_swapchain(window)
+
+// needs reference to renderer...?
+// swapchain.resize()
+
+// single renderer, multiple windows
+    // renderer.submit_commands(swapchain, commands);
+    // renderer.resize_swapchain(swapchain);
+    // all swapchains have the same tickrate, framerate may vary
+        // if rendering is not complete for the frame, skip
