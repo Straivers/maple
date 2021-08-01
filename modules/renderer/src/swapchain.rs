@@ -5,7 +5,7 @@ use windowing::Window;
 use ash::{version::DeviceV1_0, vk};
 
 /// Triple buffering
-const FRAMES_IN_FLIGHT: usize = 2;
+const FRAMES_IN_FLIGHT: u32 = 2;
 const MAX_SWAPCHAIN_IMAGES: usize = 32;
 
 #[derive(Debug, Default)]
@@ -22,9 +22,6 @@ struct SwapchainSync {
 
 #[derive(Debug)]
 pub struct Swapchain {
-    /// The index of the current frame into the frame resources.
-    frame_index: u8,
-
     /// The format of the swapchain's images.
     format: vk::Format,
 
@@ -42,10 +39,28 @@ pub struct Swapchain {
     /// The images used by the swapchain.
     images: Vec<SwapchainImage>,
 
-    sync_objects: [SwapchainSync; FRAMES_IN_FLIGHT],
+    sync_objects: [SwapchainSync; FRAMES_IN_FLIGHT as usize],
 }
 
 impl Swapchain {
+    /// Creates a new swapchain for the given window, as well as associated
+    /// semaphores needed when acquiring and presenting swapchain images.
+    ///
+    /// # Errors
+    /// Swapchain creation may fail for the following reasons:
+    ///
+    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
+    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
+    /// - `VK_ERROR_SURFACE_LOST`
+    /// - `VK_ERROR_DEVICE_LOST`
+    /// - `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`
+    /// - `VK_ERROR_INITIALIZATION_FAILED`
+    ///
+    /// # Panics
+    /// This function assumes that the initialized device in `context` was
+    /// tested for surface support through platform-specific methods (e.g. the
+    /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
+    /// panic if the device does not support creating `VkSurface`s.
     pub fn new(context: &mut VulkanContext, window: &Window) -> RendererResult<Self> {
         let surface = create_surface(context, window)?;
 
@@ -109,7 +124,7 @@ impl Swapchain {
             }
         };
 
-        let min_images = (FRAMES_IN_FLIGHT as u32).clamp(capabilities.min_image_count, capabilities.max_image_count);
+        let min_images = FRAMES_IN_FLIGHT.clamp(capabilities.min_image_count, capabilities.max_image_count);
 
         let swapchain = {
             let mut create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -153,7 +168,6 @@ impl Swapchain {
         ];
 
         Ok(Swapchain {
-            frame_index: 0,
             format: format.format,
             color_space: format.color_space,
             present_mode,

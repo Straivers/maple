@@ -2,26 +2,26 @@ use std::num::NonZeroI32;
 
 use ash::vk;
 
-pub type RendererResult<T> = Result<T, RendererError>;
+pub type RendererResult<T> = Result<T, Renderer>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RendererError {
+pub enum Renderer {
     LibraryNotFound(&'static str),
-    VulkanError(VulkanError),
+    VulkanError(Vulkan),
     NoSuitableGPU,
 }
 
 #[doc(hidden)]
-impl From<vk::Result> for RendererError {
+impl From<vk::Result> for Renderer {
     fn from(vkr: vk::Result) -> Self {
-        RendererError::VulkanError(VulkanError::from(vkr))
+        Renderer::VulkanError(Vulkan::from(vkr))
     }
 }
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// VkResult values that represent an error (<0)
-pub struct VulkanError(NonZeroI32);
+/// `VkResult` values that represent an error (<0)
+pub struct Vulkan(NonZeroI32);
 
 macro_rules! vk_error {
     ($name:ident, $x:expr, $doc_string:literal) => {
@@ -29,12 +29,13 @@ macro_rules! vk_error {
         // unwrap()` isn't stable yet.
         #[allow(dead_code)]
         #[doc = $doc_string]
-        pub const $name: VulkanError = VulkanError(unsafe { NonZeroI32::new_unchecked($x) });
+        pub const $name: Vulkan = Vulkan(unsafe { NonZeroI32::new_unchecked($x) });
     };
 }
 
 #[rustfmt::skip]
-impl VulkanError {
+#[allow(clippy::unreadable_literal)]
+impl Vulkan {
     // Vulkan 1.0
     vk_error!(OUT_OF_HOST_MEMORY, -1, "A host memory allocation has failed.");
     vk_error!(OUT_OF_DEVICE_MEMORY, -2, " A device memory allocation has failed.");
@@ -67,7 +68,7 @@ impl VulkanError {
 }
 
 #[doc(hidden)]
-impl From<vk::Result> for VulkanError {
+impl From<vk::Result> for Vulkan {
     fn from(vkr: vk::Result) -> Self {
         assert!(
             vkr.as_raw() < 0,

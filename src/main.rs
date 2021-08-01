@@ -62,7 +62,7 @@ impl AppState {
     fn create_window(&mut self, title: &str) {
         let window = windowing::Window::new(&self.event_loop, title);
         let swapchain = Box::new(renderer::swapchain::Swapchain::new(&mut self.vulkan, &window).unwrap());
-        self.windows.push(AppWindow { window, swapchain: swapchain });
+        self.windows.push(AppWindow { window, swapchain });
     }
 }
 
@@ -95,8 +95,7 @@ fn run(cli_options: &CliOptions) {
             if app_state.windows[i].window.was_close_requested() {
                 let window = app_state.windows.swap_remove(i);
                 window.swapchain.destroy(&mut app_state.vulkan);
-            }
-            else {
+            } else {
                 i += 1;
             }
         }

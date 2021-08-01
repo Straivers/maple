@@ -13,7 +13,7 @@ use ash::{
     },
     version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     vk, Device, EntryCustom, Instance,
-    InstanceError::*,
+    InstanceError::{LoadError, VkError},
 };
 
 use win32::{
@@ -26,7 +26,7 @@ use win32::{
 
 use utils::array_vec::ArrayVec;
 
-use super::error::{RendererError, RendererResult};
+use super::error::{Renderer as RendererError, RendererResult};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
@@ -64,6 +64,22 @@ pub struct VulkanContext {
 }
 
 impl VulkanContext {
+    /// Initializes a new vulkan context.
+    /// Note: The selected GPU is guaranteed to support surface creation.
+    ///
+    /// # Errors
+    /// This function may fail for the following reasons:
+    ///
+    /// - No GPU that support both rendering and presentation was found
+    /// - The Vulkan loader library could not be found on the system path
+    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
+    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
+    /// - `VK_ERROR_INITIALIZATION_FAILED`
+    /// - `VK_ERROR_EXTENSION_NOT_PRESENT`
+    /// - `VK_ERROR_LAYER_NOT_PRESENT`
+    /// - `VK_ERROR_FEATURE_NOT_PRESENT`
+    /// - `VK_ERROR_TOO_MANY_OBJECTS`
+    /// - `VK_ERROR_DEVICE_LOST`
     pub fn new(use_validation: bool) -> RendererResult<Self> {
         let library = {
             let os_library = unsafe {
@@ -112,10 +128,10 @@ impl VulkanContext {
             match unsafe { library.create_instance(&create_info, None) } {
                 Ok(instance) => instance,
                 Err(err) => match err {
-                    LoadError(missing_ext_layers) => {
-                        panic!("Required layers/extensions not found: {:?}", missing_ext_layers)
-                    }
                     VkError(vk_error) => return Err(RendererError::from(vk_error)),
+                    LoadError(_) => {
+                        unreachable!("Examination of ash's source shows this is never returned (July 31, 2021)")
+                    }
                 },
             }
         };
@@ -206,6 +222,12 @@ impl VulkanContext {
 
     /// Fetches a fence from the context's pool, or creates a new one. If the
     /// fence needs to be signalled, a new one will be created.
+    ///
+    /// # Errors
+    /// This function may fail for the following reasons:
+    ///
+    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
+    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
     pub fn get_or_create_fence(&mut self, signalled: bool) -> RendererResult<vk::Fence> {
         if signalled {
             let ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
@@ -233,6 +255,12 @@ impl VulkanContext {
     }
 
     /// Fetches a semaphore from the context's pool, or creates a new one.
+    ///
+    /// # Errors
+    /// This function may fail for the following reasons:
+    ///
+    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
+    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
     pub fn get_or_create_semaphore(&mut self) -> RendererResult<vk::Semaphore> {
         if let Some(semaphore) = self.semaphore_pool.pop() {
             Ok(semaphore)
@@ -296,6 +324,13 @@ pub(crate) struct Gpu {
     pub present_queue_index: u32,
 }
 
+/// # Errors
+/// This function may fail for the following reasons:
+///
+/// - No GPU that supports both rendering and presentation could be found.
+/// - `VK_ERROR_OUT_OF_HOST_MEMORY`
+/// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
+/// - `VK_ERROR_INITIALIZATION_FAILED`
 fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> RendererResult<Gpu> {
     let physical_devices = load_vk_objects::<_, _, MAX_PHYSICAL_DEVICES>(|count, ptr| unsafe {
         instance
@@ -313,6 +348,7 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
 
             vk::Result::SUCCESS
         })
+        // Always passes because we always return VkSuccess
         .unwrap();
 
         let mut graphics = None;

@@ -5,7 +5,7 @@ use std::{iter::FromIterator, mem::MaybeUninit};
 pub struct ArrayVec<T, const N: usize> {
     // We just need the allocated space, don't really care about what's in it.
     array: MaybeUninit<[T; N]>,
-    length: u32,
+    length: usize,
 }
 
 impl<T, const N: usize> ArrayVec<T, N> {
@@ -18,7 +18,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
     /// The number of elements in the vector.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.length as usize
+        self.length
     }
 
     /// Shorthand for `len() == 0`
@@ -69,7 +69,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
         if self.is_empty() {
             &mut []
         } else {
-            unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.length as usize) }
+            unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.length) }
         }
     }
 
@@ -78,8 +78,10 @@ impl<T, const N: usize> ArrayVec<T, N> {
     /// # Panics
     /// This function will panic if the vector is at capacity.
     pub fn push(&mut self, value: T) {
-        if (self.length as usize) < N {
-            unsafe { self.as_mut_ptr().add(self.length as usize).write(value) };
+        if self.length < N {
+            unsafe {
+                self.as_mut_ptr().add(self.length).write(value);
+            }
 
             self.length += 1;
         } else {
@@ -101,6 +103,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
 
     /// Creates a by-reference iterator over the elements in the vector.
     #[must_use]
+    #[allow(clippy::needless_lifetimes)] // Compiler gets into a cycle w/o parameters
     pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, T> {
         self.as_slice().iter()
     }
@@ -115,7 +118,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
     /// This function will panic if `length` is greater than `N`.
     pub unsafe fn set_len(&mut self, length: usize) {
         if length <= N {
-            self.length = length as u32;
+            self.length = length;
         } else {
             panic!("attempted to set length on ArrayVec outside of bounds.");
         }
@@ -135,7 +138,9 @@ impl<T, const N: usize> Default for ArrayVec<T, N> {
 impl<T, const N: usize> Drop for ArrayVec<T, N> {
     fn drop(&mut self) {
         for element in self.as_mut_slice() {
-            unsafe { std::ptr::drop_in_place(element) };
+            unsafe {
+                std::ptr::drop_in_place(element);
+            }
         }
     }
 }
@@ -192,28 +197,30 @@ where
         assert!(N1 <= N2);
         let mut vec = Self::default();
         let vec_slice = {
-            let ptr = &mut vec.array as *mut _ as *mut T;
+            let ptr = vec.array.as_mut_ptr().cast();
             unsafe { std::slice::from_raw_parts_mut(ptr, N1) }
         };
         vec_slice.copy_from_slice(&slice);
-        unsafe { vec.set_len(N1) };
+        unsafe {
+            vec.set_len(N1);
+        }
         vec
     }
 }
 
 impl<T, const N: usize> FromIterator<T> for ArrayVec<T, N> {
-    /// Creates a new ArrayVec, and fills it with values from the iterator. The
-    /// ArrayVec will take as many elements as the iterator contains, up to N
-    /// elements.
+    /// Creates a new `ArrayVec`, and fills it with values from the iterator.
+    /// The `ArrayVec` will take as many elements as the iterator contains, up
+    /// to N elements.
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut vec = Self::default();
 
-        let mut ptr = &mut vec.array as *mut _ as *mut T;
+        let mut ptr = vec.array.as_mut_ptr().cast::<T>();
         let mut length = 0;
 
         let end = unsafe { ptr.add(N) };
 
-        for v in iter.into_iter() {
+        for v in iter {
             if ptr == end {
                 break;
             }
@@ -226,7 +233,9 @@ impl<T, const N: usize> FromIterator<T> for ArrayVec<T, N> {
         }
 
         assert!(length <= N);
-        unsafe { vec.set_len(length) };
+        unsafe {
+            vec.set_len(length);
+        }
 
         vec
     }

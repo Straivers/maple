@@ -1,13 +1,13 @@
 use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
 use utils::array_vec::ArrayVec;
 use win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
-    System::{Diagnostics::Debug::GetLastError, LibraryLoader::GetModuleHandleW},
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
+    System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetWindowLongPtrW,
-        PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW,
-        CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE,
-        WM_DESTROY, WM_QUIT, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, PeekMessageW,
+        RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
+        CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY,
+        WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -22,6 +22,8 @@ pub const MAX_TITLE_LENGTH: usize = 256;
 #[derive(Default, Debug)]
 struct WindowData {
     hwnd: HWND,
+    width: u32,
+    height: u32,
     was_close_requested: bool,
     _pin: PhantomPinned,
 }
@@ -49,6 +51,8 @@ impl Window {
         // let mut window = Box::new(Self::default());
         let mut window_data = Box::new(RefCell::new(WindowData {
             hwnd: HWND::NULL,
+            width: 0,
+            height: 0,
             was_close_requested: false,
             _pin: PhantomPinned,
         }));
@@ -107,19 +111,9 @@ impl Window {
 
     #[must_use]
     pub fn framebuffer_size(&self) -> WindowSize {
-        let mut rect = RECT::default();
-
-        if unsafe { GetClientRect(self.window_data.borrow().hwnd, &mut rect) } == false {
-            panic!("Unable to retrieve framebuffer size: {:?}", unsafe { GetLastError() });
-        }
-
         WindowSize {
-            width: (rect.right - rect.left)
-                .try_into()
-                .expect("Unrepresentable framebuffer size"),
-            height: (rect.bottom - rect.top)
-                .try_into()
-                .expect("Unrepresentable framebuffer size"),
+            width: self.window_data.borrow().width,
+            height: self.window_data.borrow().height,
         }
     }
 }
@@ -138,6 +132,7 @@ impl Drop for Window {
 ///
 // Impl Note: This is a great place to stash anything that is shared between
 // windows.
+#[derive(Default)]
 pub struct EventLoop {
     // So that we get /* fields omitted */ in the docs
     #[doc(hidden)]
@@ -146,6 +141,7 @@ pub struct EventLoop {
 
 impl EventLoop {
     /// Creates a new event loop
+    #[must_use]
     pub fn new() -> Self {
         Self { _empty: 0 }
     }
@@ -197,6 +193,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     match msg {
         WM_CLOSE => {
             (*window).borrow_mut().was_close_requested = true;
+            LRESULT::default()
+        }
+        WM_SIZE => {
+            // LOWORD and HIWORD (i16s for historical reasons, I guess)
+            let width = lparam.0 as i16;
+            let height = (lparam.0 >> i16::BITS) & 0xFFFF;
+            (*window).borrow_mut().width = width.try_into().expect("Window width is negative or > 65535");
+            (*window).borrow_mut().height = height.try_into().expect("Window width is negative or > 65535");
             LRESULT::default()
         }
         WM_DESTROY => {
