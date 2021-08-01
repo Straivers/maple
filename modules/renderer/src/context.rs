@@ -11,12 +11,9 @@ use ash::{
         ext::DebugUtils,
         khr::{Surface, Swapchain, Win32Surface},
     },
-    version::{
-        DeviceV1_0,
-        EntryV1_0,
-        InstanceV1_0,
-    },
-    vk, Device, EntryCustom, Instance, InstanceError::*,
+    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
+    vk, Device, EntryCustom, Instance,
+    InstanceError::*,
 };
 
 use win32::{

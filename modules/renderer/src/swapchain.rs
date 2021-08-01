@@ -5,7 +5,7 @@ use windowing::Window;
 use ash::{version::DeviceV1_0, vk};
 
 /// Triple buffering
-const FRAMES_IN_FLIGHT: usize = 3;
+const FRAMES_IN_FLIGHT: usize = 2;
 const MAX_SWAPCHAIN_IMAGES: usize = 32;
 
 #[derive(Debug, Default)]
@@ -142,10 +142,6 @@ impl Swapchain {
         get_swapchain_images(context, swapchain, format.format, &mut images)?;
 
         let sync_objects = [
-            SwapchainSync {
-                acquire_semaphore: context.get_or_create_semaphore()?,
-                present_semaphore: context.get_or_create_semaphore()?,
-            },
             SwapchainSync {
                 acquire_semaphore: context.get_or_create_semaphore()?,
                 present_semaphore: context.get_or_create_semaphore()?,

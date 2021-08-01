@@ -1,3 +1,5 @@
+use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
+use utils::array_vec::ArrayVec;
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{Diagnostics::Debug::GetLastError, LibraryLoader::GetModuleHandleW},
@@ -8,8 +10,6 @@ use win32::{
         WM_DESTROY, WM_QUIT, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
-use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
-use utils::array_vec::ArrayVec;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
 

@@ -8,6 +8,4 @@ fn config_platform() {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn config_platform() {
-
-}
+fn config_platform() {}
