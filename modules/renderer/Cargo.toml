@@ -5,6 +5,5 @@ edition = "2018"
 
 [dependencies]
 ash = { version = "0.32.1", default-features = false }
-win32 = { path = "../win32" }
+sys = { path = "../sys" }
 utils = { path = "../utils" }
-windowing = { path = "../windowing" }

@@ -11,6 +11,8 @@ use win32::{
     },
 };
 
+use crate::{dpi::PhysicalSize, window_handle::WindowHandle};
+
 const WNDCLASS_NAME: &str = "maple_wndclass";
 
 /// The maximum number of characters that the window title can be, in UTF-8 code
@@ -22,15 +24,11 @@ pub const MAX_TITLE_LENGTH: usize = 256;
 #[derive(Default, Debug)]
 struct WindowData {
     hwnd: HWND,
-    width: u32,
-    height: u32,
+    hinstance: HINSTANCE,
+    width: u16,
+    height: u16,
     was_close_requested: bool,
     _pin: PhantomPinned,
-}
-
-pub struct WindowSize {
-    pub width: u32,
-    pub height: u32,
 }
 
 /// A window created by the operating system's window manager. The OS window will
@@ -48,23 +46,23 @@ impl Window {
     /// Creates a new window and associates it with the event loop.
     #[must_use]
     pub fn new(_: &EventLoop, title: &str) -> Self {
-        // let mut window = Box::new(Self::default());
+        let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
+
+        let hinstance = unsafe { GetModuleHandleW(None) };
+        assert_ne!(hinstance, HINSTANCE::NULL);
+
         let mut window_data = Box::new(RefCell::new(WindowData {
             hwnd: HWND::NULL,
+            hinstance,
             width: 0,
             height: 0,
             was_close_requested: false,
             _pin: PhantomPinned,
         }));
 
-        let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
-
-        let hmodule = unsafe { GetModuleHandleW(None) };
-        assert_ne!(hmodule, HINSTANCE::NULL);
-
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW,
-            hInstance: hmodule,
+            hInstance: hinstance,
             lpfnWndProc: Some(wndproc),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
             ..WNDCLASSW::default()
@@ -103,15 +101,17 @@ impl Window {
         self.window_data.borrow().was_close_requested
     }
 
-    #[cfg(target_os = "windows")]
     #[must_use]
-    pub fn get_hwnd(&self) -> HWND {
-        self.window_data.borrow().hwnd
+    pub fn handle(&self) -> WindowHandle {
+        WindowHandle {
+            hwnd: self.window_data.borrow().hwnd.0 as _,
+            hinstance: self.window_data.borrow().hinstance.0 as _,
+        }
     }
 
     #[must_use]
-    pub fn framebuffer_size(&self) -> WindowSize {
-        WindowSize {
+    pub fn framebuffer_size(&self) -> PhysicalSize {
+        PhysicalSize {
             width: self.window_data.borrow().width,
             height: self.window_data.borrow().height,
         }

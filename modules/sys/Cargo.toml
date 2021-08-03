@@ -1,10 +1,8 @@
 [package]
-name = "windowing"
+name = "sys"
 version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-utils = { path = "../utils" }
-
-[target.'cfg(windows)'.dependencies]
 win32 = { path = "../win32" }
+utils = { path = "../utils" }

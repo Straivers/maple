@@ -40,27 +40,29 @@ fn main() {
 }
 
 struct AppWindow {
-    window: windowing::Window,
+    window: sys::window::Window,
     swapchain: Box<renderer::swapchain::Swapchain>,
 }
 
 struct AppState {
-    event_loop: windowing::EventLoop,
+    event_loop: sys::window::EventLoop,
     windows: Vec<AppWindow>,
     vulkan: renderer::context::VulkanContext,
 }
 
 impl AppState {
     fn new(extra_validation: bool) -> Self {
+        let vulkan_lib =
+            sys::library::Library::load("vulkan-1").expect("Could not initialize Vulkan, vulkan-1 not found");
         Self {
-            event_loop: windowing::EventLoop::new(),
+            event_loop: sys::window::EventLoop::new(),
             windows: Vec::new(),
-            vulkan: renderer::context::VulkanContext::new(extra_validation).unwrap(),
+            vulkan: renderer::context::VulkanContext::new(vulkan_lib, extra_validation).unwrap(),
         }
     }
 
     fn create_window(&mut self, title: &str) {
-        let window = windowing::Window::new(&self.event_loop, title);
+        let window = sys::window::Window::new(&self.event_loop, title);
         let swapchain = Box::new(renderer::swapchain::Swapchain::new(&mut self.vulkan, &window).unwrap());
         self.windows.push(AppWindow { window, swapchain });
     }
@@ -82,14 +84,6 @@ fn run(cli_options: &CliOptions) {
     while !app_state.windows.is_empty() {
         app_state.event_loop.poll();
 
-        /*
-        for window in windows {
-            if window.was_resized() {
-                app_state.triangle_renderer.resize_swapchain(swapchain);
-            }
-        }
-        */
-
         let mut i = 0;
         while i < app_state.windows.len() {
             if app_state.windows[i].window.was_close_requested() {
@@ -99,5 +93,19 @@ fn run(cli_options: &CliOptions) {
                 i += 1;
             }
         }
+
+        /*
+        for window in windows {
+            if window.window.size() != window.swapchain.size() {
+                app_state.triangle_renderer.resize_swapchain(swapchain, window.window.size());
+            }
+        }
+        */
+
+        /*
+        for window in windows {
+            app_state.triangle_renderer.render_to(window.swapchain);
+        }
+        */
     }
 }

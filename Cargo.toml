@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-windowing = { path="modules/windowing" }
 renderer = { path="modules/renderer" }
+sys = { path = "modules/sys" }
 
 [dependencies.clap]
 version = "2.33"
@@ -19,5 +19,5 @@ members = [
     "modules/renderer",
     "modules/utils",
     "modules/win32",
-    "modules/windowing",
+    "modules/sys",
 ]

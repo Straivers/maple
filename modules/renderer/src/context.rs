@@ -16,13 +16,7 @@ use ash::{
     InstanceError::{LoadError, VkError},
 };
 
-use win32::{
-    Foundation::{HINSTANCE, PSTR},
-    System::{
-        Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS},
-        LibraryLoader::{GetProcAddress, LoadLibraryA},
-    },
-};
+use sys::library::Library;
 
 use utils::array_vec::ArrayVec;
 
@@ -45,7 +39,7 @@ pub struct VulkanDebug {
 
 pub struct VulkanContext {
     #[allow(dead_code)]
-    library: EntryCustom<HINSTANCE>,
+    library: EntryCustom<Library>,
     instance: Instance,
     pub(crate) gpu: Gpu,
     pub device: Device,
@@ -80,25 +74,10 @@ impl VulkanContext {
     /// - `VK_ERROR_FEATURE_NOT_PRESENT`
     /// - `VK_ERROR_TOO_MANY_OBJECTS`
     /// - `VK_ERROR_DEVICE_LOST`
-    pub fn new(use_validation: bool) -> RendererResult<Self> {
-        let library = {
-            let os_library = unsafe {
-                let lib = LoadLibraryA("vulkan-1");
-                if lib.is_null() {
-                    return Err(RendererError::LibraryNotFound("vulkan-1"));
-                }
-                SetErrorMode(SEM_FAILCRITICALERRORS);
-                lib
-            };
-
-            EntryCustom::new_custom(os_library, |lib, name| unsafe {
-                // It is safe to use PSTR and cast to *mut u8 because the C api
-                // takes the lpprocname as PCSTR
-                // https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
-                GetProcAddress(*lib, PSTR(name.to_bytes_with_nul().as_ptr() as _))
-                    .map_or(std::ptr::null_mut(), |p| p as *mut c_void)
-            })
-        };
+    pub fn new(os_library: Library, use_validation: bool) -> RendererResult<Self> {
+        let library = EntryCustom::new_custom(os_library, |lib, name| {
+            lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
+        });
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(

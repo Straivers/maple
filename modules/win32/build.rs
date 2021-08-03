@@ -11,7 +11,7 @@ fn build_apis() {
                 LibraryLoader::{
                     GetModuleHandleW,
                     GetProcAddress,
-                    LoadLibraryA
+                    LoadLibraryW,
                 },
                 Diagnostics::Debug::{
                     GetLastError,

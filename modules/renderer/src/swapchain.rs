@@ -1,6 +1,6 @@
 use super::context::{load_vk_objects, VulkanContext};
 use super::error::RendererResult;
-use windowing::Window;
+use sys::window::Window;
 
 use ash::{version::DeviceV1_0, vk};
 
@@ -111,10 +111,9 @@ impl Swapchain {
             if capabilities.current_extent.width == u32::MAX {
                 let size = window.framebuffer_size();
                 vk::Extent2D {
-                    width: size
-                        .width
+                    width: (size.width as u32)
                         .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
-                    height: size.height.clamp(
+                    height: (size.height as u32).clamp(
                         capabilities.min_image_extent.height,
                         capabilities.max_image_extent.height,
                     ),
@@ -197,12 +196,10 @@ impl Swapchain {
 
 #[cfg(target_os = "windows")]
 fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk::SurfaceKHR> {
-    use win32::System::LibraryLoader::GetModuleHandleW;
-
-    let hinstance = unsafe { GetModuleHandleW(None) };
+    let handle = window.handle();
     let ci = vk::Win32SurfaceCreateInfoKHR::builder()
-        .hwnd(window.get_hwnd().0 as _)
-        .hinstance(hinstance.0 as _);
+        .hwnd(handle.hwnd)
+        .hinstance(handle.hinstance);
     Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
 }
 
