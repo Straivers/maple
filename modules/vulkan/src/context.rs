@@ -20,7 +20,7 @@ use sys::library::Library;
 
 use utils::array_vec::ArrayVec;
 
-use super::error::{Renderer as RendererError, RendererResult};
+use super::error::{Error as VulkanError, Result};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
@@ -37,7 +37,7 @@ pub struct VulkanDebug {
     callback: vk::DebugUtilsMessengerEXT,
 }
 
-pub struct VulkanContext {
+pub struct Context {
     #[allow(dead_code)]
     library: EntryCustom<Library>,
     instance: Instance,
@@ -57,7 +57,7 @@ pub struct VulkanContext {
     debug: Option<VulkanDebug>,
 }
 
-impl VulkanContext {
+impl Context {
     /// Initializes a new vulkan context.
     /// Note: The selected GPU is guaranteed to support surface creation.
     ///
@@ -74,7 +74,7 @@ impl VulkanContext {
     /// - `VK_ERROR_FEATURE_NOT_PRESENT`
     /// - `VK_ERROR_TOO_MANY_OBJECTS`
     /// - `VK_ERROR_DEVICE_LOST`
-    pub fn new(os_library: Library, use_validation: bool) -> RendererResult<Self> {
+    pub fn new(os_library: Library, use_validation: bool) -> Result<Self> {
         let library = EntryCustom::new_custom(os_library, |lib, name| {
             lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
         });
@@ -107,7 +107,7 @@ impl VulkanContext {
             match unsafe { library.create_instance(&create_info, None) } {
                 Ok(instance) => instance,
                 Err(err) => match err {
-                    VkError(vk_error) => return Err(RendererError::from(vk_error)),
+                    VkError(vk_error) => return Err(VulkanError::from(vk_error)),
                     LoadError(_) => {
                         unreachable!("Examination of ash's source shows this is never returned (July 31, 2021)")
                     }
@@ -207,7 +207,7 @@ impl VulkanContext {
     ///
     /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
     /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    pub fn get_or_create_fence(&mut self, signalled: bool) -> RendererResult<vk::Fence> {
+    pub fn get_or_create_fence(&mut self, signalled: bool) -> Result<vk::Fence> {
         if signalled {
             let ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             Ok(unsafe { self.device.create_fence(&ci, None) }?)
@@ -240,7 +240,7 @@ impl VulkanContext {
     ///
     /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
     /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    pub fn get_or_create_semaphore(&mut self) -> RendererResult<vk::Semaphore> {
+    pub fn get_or_create_semaphore(&mut self) -> Result<vk::Semaphore> {
         if let Some(semaphore) = self.semaphore_pool.pop() {
             Ok(semaphore)
         } else {
@@ -262,7 +262,7 @@ impl VulkanContext {
     }
 }
 
-impl Drop for VulkanContext {
+impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
             // We're shutting down, so ignore errors
@@ -310,7 +310,7 @@ pub(crate) struct Gpu {
 /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
 /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
 /// - `VK_ERROR_INITIALIZATION_FAILED`
-fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> RendererResult<Gpu> {
+fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Result<Gpu> {
     let physical_devices = load_vk_objects::<_, _, MAX_PHYSICAL_DEVICES>(|count, ptr| unsafe {
         instance
             .fp_v1_0()
@@ -356,10 +356,10 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
         }
     }
 
-    Err(RendererError::NoSuitableGPU)
+    Err(VulkanError::NoSuitableGpu)
 }
 
-pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> RendererResult<ArrayVec<T, COUNT>>
+pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> Result<ArrayVec<T, COUNT>>
 where
     F: FnMut(*mut u32, *mut T) -> vk::Result,
 {

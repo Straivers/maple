@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-renderer = { path="modules/renderer" }
+vulkan = { path="modules/vulkan" }
 sys = { path = "modules/sys" }
 
 [dependencies.clap]
@@ -16,7 +16,7 @@ embed-resource = "1.6"
 
 [workspace]
 members = [
-    "modules/renderer",
+    "modules/vulkan",
     "modules/utils",
     "modules/win32",
     "modules/sys",

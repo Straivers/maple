@@ -1,5 +1,5 @@
-use super::context::{load_vk_objects, VulkanContext};
-use super::error::RendererResult;
+use super::context::{load_vk_objects, Context};
+use super::error::Result;
 use sys::window::Window;
 
 use ash::{version::DeviceV1_0, vk};
@@ -61,7 +61,7 @@ impl Swapchain {
     /// tested for surface support through platform-specific methods (e.g. the
     /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
     /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(context: &mut VulkanContext, window: &Window) -> RendererResult<Self> {
+    pub fn new(context: &mut Context, window: &Window) -> Result<Self> {
         let surface = create_surface(context, window)?;
 
         // We test with platform-specific APIs during surface creation
@@ -111,9 +111,9 @@ impl Swapchain {
             if capabilities.current_extent.width == u32::MAX {
                 let size = window.framebuffer_size();
                 vk::Extent2D {
-                    width: (size.width as u32)
+                    width: u32::from(size.width)
                         .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
-                    height: (size.height as u32).clamp(
+                    height: u32::from(size.height).clamp(
                         capabilities.min_image_extent.height,
                         capabilities.max_image_extent.height,
                     ),
@@ -177,7 +177,7 @@ impl Swapchain {
         })
     }
 
-    pub fn destroy(self, context: &mut VulkanContext) {
+    pub fn destroy(self, context: &mut Context) {
         unsafe {
             for image in self.images {
                 context.device.destroy_image_view(image.view, None);
@@ -195,7 +195,7 @@ impl Swapchain {
 }
 
 #[cfg(target_os = "windows")]
-fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk::SurfaceKHR> {
+fn create_surface(context: &Context, window: &Window) -> Result<vk::SurfaceKHR> {
     let handle = window.handle();
     let ci = vk::Win32SurfaceCreateInfoKHR::builder()
         .hwnd(handle.hwnd)
@@ -204,11 +204,11 @@ fn create_surface(context: &VulkanContext, window: &Window) -> RendererResult<vk
 }
 
 fn get_swapchain_images(
-    context: &VulkanContext,
+    context: &Context,
     swapchain: vk::SwapchainKHR,
     format: vk::Format,
     buffer: &mut Vec<SwapchainImage>,
-) -> RendererResult<()> {
+) -> Result<()> {
     let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
         context
             .swapchain_api
