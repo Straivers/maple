@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-vulkan = { path="modules/vulkan" }
 sys = { path = "modules/sys" }
+triangle_renderer = { path = "modules/triangle_renderer" }
 
 [dependencies.clap]
 version = "2.33"

@@ -7,6 +7,7 @@
 // maple runner is a debug-only tool right now, can afford runtime compilation
 
 use clap::{App, Arg};
+use triangle_renderer::{TriangleRenderer, Swapchain};
 
 #[derive(Debug)]
 struct CliOptions {
@@ -41,13 +42,13 @@ fn main() {
 
 struct AppWindow {
     window: sys::window::Window,
-    swapchain: Box<vulkan::Swapchain>,
+    swapchain: Box<Swapchain>,
 }
 
 struct AppState {
     event_loop: sys::window::EventLoop,
     windows: Vec<AppWindow>,
-    vulkan: vulkan::Context,
+    renderer: TriangleRenderer
 }
 
 impl AppState {
@@ -57,13 +58,13 @@ impl AppState {
         Self {
             event_loop: sys::window::EventLoop::new(),
             windows: Vec::new(),
-            vulkan: vulkan::Context::new(vulkan_lib, extra_validation).unwrap(),
+            renderer: TriangleRenderer::new(vulkan_lib, extra_validation).unwrap(),
         }
     }
 
     fn create_window(&mut self, title: &str) {
         let window = sys::window::Window::new(&self.event_loop, title);
-        let swapchain = Box::new(vulkan::Swapchain::new(&mut self.vulkan, &window).unwrap());
+        let swapchain = Box::new(self.renderer.create_swapchain(window.get()).unwrap());
         self.windows.push(AppWindow { window, swapchain });
     }
 }
@@ -71,7 +72,7 @@ impl AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         for window in self.windows.drain(0..) {
-            window.swapchain.destroy(&mut self.vulkan);
+            self.renderer.destroy_swapchain(*window.swapchain);
         }
     }
 }
@@ -88,24 +89,14 @@ fn run(cli_options: &CliOptions) {
         while i < app_state.windows.len() {
             if app_state.windows[i].window.was_close_requested() {
                 let window = app_state.windows.swap_remove(i);
-                window.swapchain.destroy(&mut app_state.vulkan);
+                app_state.renderer.destroy_swapchain(*window.swapchain);
             } else {
                 i += 1;
             }
         }
 
-        /*
-        for window in windows {
-            if window.window.size() != window.swapchain.size() {
-                app_state.triangle_renderer.resize_swapchain(swapchain, window.window.size());
-            }
+        for window in &mut app_state.windows {
+            app_state.renderer.render_to(&mut window.swapchain);
         }
-        */
-
-        /*
-        for window in windows {
-            app_state.triangle_renderer.render_to(window.swapchain);
-        }
-        */
     }
 }

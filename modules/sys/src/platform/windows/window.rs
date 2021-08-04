@@ -129,7 +129,7 @@ impl Drop for Window {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct WindowRef {
     pointer: rc::Weak<RefCell<WindowData>>
 }

@@ -1,6 +1,6 @@
 use super::context::{load_vk_objects, Context};
-use super::error::Result;
-use sys::window::Window;
+use super::error::{Error, Result};
+use sys::window::{WindowRef};
 
 use ash::{version::DeviceV1_0, vk};
 
@@ -56,12 +56,16 @@ impl Swapchain {
     /// - `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`
     /// - `VK_ERROR_INITIALIZATION_FAILED`
     ///
+    /// In addition to fallible Vulkan API calls, this function will also return
+    /// VK_ERROR_NATIVE_WINDOW_IN_USE_KHR if the passed `WindowRef` is not
+    /// valid.
+    ///
     /// # Panics
     /// This function assumes that the initialized device in `context` was
     /// tested for surface support through platform-specific methods (e.g. the
     /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
     /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(context: &mut Context, window: &Window) -> Result<Self> {
+    pub fn new(context: &mut Context, window: &WindowRef) -> Result<Self> {
         let surface = create_surface(context, window)?;
 
         // We test with platform-specific APIs during surface creation
@@ -109,14 +113,18 @@ impl Swapchain {
 
         let extent = {
             if capabilities.current_extent.width == u32::MAX {
-                let size = window.framebuffer_size();
-                vk::Extent2D {
-                    width: u32::from(size.width)
-                        .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
-                    height: u32::from(size.height).clamp(
-                        capabilities.min_image_extent.height,
-                        capabilities.max_image_extent.height,
-                    ),
+                if let Some(size) = window.framebuffer_size() {
+                    vk::Extent2D {
+                        width: u32::from(size.width)
+                            .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
+                        height: u32::from(size.height).clamp(
+                            capabilities.min_image_extent.height,
+                            capabilities.max_image_extent.height,
+                        ),
+                    }
+                }
+                else {
+                    return Err(Error::NativeWindowInUse);
                 }
             } else {
                 capabilities.current_extent
@@ -195,12 +203,16 @@ impl Swapchain {
 }
 
 #[cfg(target_os = "windows")]
-fn create_surface(context: &Context, window: &Window) -> Result<vk::SurfaceKHR> {
-    let handle = window.handle();
-    let ci = vk::Win32SurfaceCreateInfoKHR::builder()
-        .hwnd(handle.hwnd)
-        .hinstance(handle.hinstance);
-    Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
+fn create_surface(context: &Context, window: &WindowRef) -> Result<vk::SurfaceKHR> {
+    if let Some(handle) = window.handle() {
+        let ci = vk::Win32SurfaceCreateInfoKHR::builder()
+            .hwnd(handle.hwnd)
+            .hinstance(handle.hinstance);
+        Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
+    }
+    else {
+        Err(Error::NativeWindowInUse)
+    }
 }
 
 fn get_swapchain_images(

@@ -47,6 +47,7 @@ impl Window {
     }
 }
 
+#[derive(Debug, Clone)]
 /// A non-owning const, possibly invalid const reference to a window.
 pub struct WindowRef {
     window: platform::WindowRef,
