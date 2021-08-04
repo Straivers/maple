@@ -23,12 +23,12 @@ struct SwapchainSync {
 #[derive(Debug)]
 pub struct Swapchain {
     /// The format of the swapchain's images.
-    format: vk::Format,
+    pub format: vk::Format,
 
-    color_space: vk::ColorSpaceKHR,
+    pub color_space: vk::ColorSpaceKHR,
 
     /// The method by which the images are presented in the swapchain.
-    present_mode: vk::PresentModeKHR,
+    pub present_mode: vk::PresentModeKHR,
 
     /// A handle to the surface that represents the swapchain's window.
     surface: vk::SurfaceKHR,

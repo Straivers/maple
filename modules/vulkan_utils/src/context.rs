@@ -295,6 +295,16 @@ impl Context {
             self.device.destroy_shader_module(shader, None);
         }
     }
+
+    pub fn create_graphics_pipeline(&mut self, create_info: &vk::GraphicsPipelineCreateInfo) -> Result<vk::Pipeline> {
+        let mut pipeline = vk::Pipeline::default();
+        
+        unsafe {
+            self.device.fp_v1_0().create_graphics_pipelines(self.device.handle(), self.pipeline_cache, 1, create_info, std::ptr::null(), &mut pipeline).result()?;
+        }
+
+        Ok(pipeline)
+    }
 }
 
 impl Drop for Context {
@@ -314,6 +324,8 @@ impl Drop for Context {
             if let Some(debug) = self.debug.as_ref() {
                 debug.api.destroy_debug_utils_messenger(debug.callback, None);
             }
+
+            self.device.destroy_pipeline_cache(self.pipeline_cache, None);
 
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);
