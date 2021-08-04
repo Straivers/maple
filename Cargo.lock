@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "ash"
-version = "0.32.1"
+version = "0.33.0+1.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06063a002a77d2734631db74e8f4ce7148b77fe522e6bca46f2ae7774fd48112"
+checksum = "a2142f1fa77cc4d24ffd2f24dc84f88ce5b1e588d524f10fb473a04b93aef14f"
 
 [[package]]
 name = "bitflags"
@@ -143,9 +143,10 @@ dependencies = [
 name = "triangle_renderer"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "shaderc",
  "sys",
- "vulkan",
+ "vulkan_utils",
 ]
 
 [[package]]
@@ -185,7 +186,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vulkan"
+name = "vulkan_utils"
 version = "0.1.0"
 dependencies = [
  "ash",

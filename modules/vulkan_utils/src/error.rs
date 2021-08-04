@@ -7,6 +7,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// An unknown error was encountered
     Unknown,
+    /// The library that was passed for Vulkan initialization is not a Vulkan library
+    LibraryNotVulkan,
+    /// The SPIR-V file is corrupted or otherwise unreadable
+    InvalidSpirV,
     /// Vulkan 1.0: Could not find a GPU that supports both graphics and presentation
     NoSuitableGpu,
     /// Vulkan 1.0: Vulkan ran out of system RAM

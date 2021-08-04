@@ -41,21 +41,17 @@ impl Library {
         })
     }
 
+    #[must_use]
     pub fn path(&self) -> &str {
         self.library.path()
     }
 
     /// Attempts to retrieve a symbol stored within the library, returns `None`
     /// if it was not found.
-    #[must_use]
     pub fn get_symbol(&self, name: &CStr) -> Result<*mut c_void, Error> {
-        if let Some(sym) = self.library.get_symbol(name) {
-            Ok(sym)
-        } else {
-            Err(Error::SymbolNotFound(
-                self.path().to_string(),
-                name.to_string_lossy().to_string(),
-            ))
-        }
+        self.library.get_symbol(name).ok_or(Error::SymbolNotFound(
+            self.path().to_string(),
+            name.to_string_lossy().to_string(),
+        ))
     }
 }

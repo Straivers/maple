@@ -11,8 +11,11 @@ use ash::{
         ext::DebugUtils,
         khr::{Surface, Swapchain, Win32Surface},
     },
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk, Device, EntryCustom, Instance,
+    // version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
+    vk,
+    Device,
+    EntryCustom,
+    Instance,
     InstanceError::{LoadError, VkError},
 };
 
@@ -51,6 +54,7 @@ pub struct Context {
     pub os_surface_api: Win32Surface,
     pub swapchain_api: Swapchain,
 
+    pipeline_cache: vk::PipelineCache,
     fence_pool: ArrayVec<vk::Fence, SYNC_POOL_SIZE>,
     semaphore_pool: ArrayVec<vk::Semaphore, SYNC_POOL_SIZE>,
 
@@ -75,9 +79,17 @@ impl Context {
     /// - `VK_ERROR_TOO_MANY_OBJECTS`
     /// - `VK_ERROR_DEVICE_LOST`
     pub fn new(os_library: Library, use_validation: bool) -> Result<Self> {
-        let library = EntryCustom::new_custom(os_library, |lib, name| {
-            lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
-        });
+        let library = {
+            let entry = EntryCustom::new_custom(os_library, |lib, name| {
+                lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
+            });
+
+            if let Ok(e) = entry {
+                e
+            } else {
+                return Err(VulkanError::LibraryNotVulkan);
+            }
+        };
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
@@ -161,6 +173,11 @@ impl Context {
         let present_queue = unsafe { device.get_device_queue(gpu.present_queue_index, 0) };
         let graphics_queue = unsafe { device.get_device_queue(gpu.graphics_queue_index, 0) };
 
+        let pipeline_cache = {
+            let create_info = vk::PipelineCacheCreateInfo::builder();
+            unsafe { device.create_pipeline_cache(&create_info, None) }?
+        };
+
         let fence_pool = {
             let mut pool = ArrayVec::new();
 
@@ -193,6 +210,7 @@ impl Context {
             surface_api,
             os_surface_api,
             swapchain_api,
+            pipeline_cache,
             fence_pool,
             semaphore_pool,
             debug,
@@ -258,6 +276,23 @@ impl Context {
             }
         } else {
             self.semaphore_pool.push(semaphore);
+        }
+    }
+
+    pub fn create_shader(&mut self, source: &[u8]) -> Result<vk::ShaderModule> {
+        if source.len() % 4 == 0 {
+            let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
+            let ci = vk::ShaderModuleCreateInfo::builder().code(words);
+
+            Ok(unsafe { self.device.create_shader_module(&ci, None) }?)
+        } else {
+            Err(VulkanError::InvalidSpirV)
+        }
+    }
+
+    pub fn destroy_shader(&mut self, shader: vk::ShaderModule) {
+        unsafe {
+            self.device.destroy_shader_module(shader, None);
         }
     }
 }

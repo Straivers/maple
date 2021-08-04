@@ -2,7 +2,7 @@ use super::context::{load_vk_objects, Context};
 use super::error::{Error, Result};
 use sys::window::WindowRef;
 
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 
 /// Triple buffering
 const FRAMES_IN_FLIGHT: u32 = 2;
@@ -57,7 +57,7 @@ impl Swapchain {
     /// - `VK_ERROR_INITIALIZATION_FAILED`
     ///
     /// In addition to fallible Vulkan API calls, this function will also return
-    /// VK_ERROR_NATIVE_WINDOW_IN_USE_KHR if the passed `WindowRef` is not
+    /// `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR` if the passed `WindowRef` is not
     /// valid.
     ///
     /// # Panics

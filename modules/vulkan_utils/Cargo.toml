@@ -1,12 +1,9 @@
 [package]
-name = "triangle_renderer"
+name = "vulkan_utils"
 version = "0.1.0"
 edition = "2018"
 
 [dependencies]
 ash = { version = "0.33", default-features = false }
-vulkan_utils = { path = "../vulkan_utils" }
 sys = { path = "../sys" }
-
-[build-dependencies]
-shaderc = "0.7"
+utils = { path = "../utils" }

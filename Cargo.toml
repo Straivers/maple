@@ -16,7 +16,7 @@ embed-resource = "1.6"
 
 [workspace]
 members = [
-    "modules/vulkan",
+    "modules/vulkan_utils",
     "modules/utils",
     "modules/win32",
     "modules/sys",
