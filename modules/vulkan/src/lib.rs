@@ -1,3 +1,7 @@
-pub mod context;
-pub mod error;
-pub mod swapchain;
+mod context;
+mod error;
+mod swapchain;
+
+pub use context::Context;
+pub use error::Error;
+pub use swapchain::Swapchain;

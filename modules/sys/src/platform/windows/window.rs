@@ -1,4 +1,4 @@
-use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned};
+use std::{cell::RefCell, convert::TryInto, ffi::c_void, marker::PhantomPinned, rc};
 use utils::array_vec::ArrayVec;
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
@@ -38,12 +38,11 @@ struct WindowData {
 /// button, minimizing, or resizing require that the `EventLoop` be polled
 /// frequently.
 #[derive(Debug)]
-pub struct Window {
-    window_data: Box<RefCell<WindowData>>,
+pub(crate) struct Window {
+    window_data: rc::Rc<RefCell<WindowData>>,
 }
 
 impl Window {
-    /// Creates a new window and associates it with the event loop.
     #[must_use]
     pub fn new(_: &EventLoop, title: &str) -> Self {
         let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
@@ -51,7 +50,7 @@ impl Window {
         let hinstance = unsafe { GetModuleHandleW(None) };
         assert_ne!(hinstance, HINSTANCE::NULL);
 
-        let mut window_data = Box::new(RefCell::new(WindowData {
+        let window_data = rc::Rc::new(RefCell::new(WindowData {
             hwnd: HWND::NULL,
             hinstance,
             width: 0,
@@ -85,7 +84,7 @@ impl Window {
                 None,
                 None,
                 GetModuleHandleW(None),
-                (window_data.as_mut() as *mut RefCell<_>).cast::<c_void>(),
+                rc::Rc::as_ptr(&window_data) as *mut c_void,
             )
         };
 
@@ -94,8 +93,13 @@ impl Window {
         Window { window_data }
     }
 
-    /// Checks if the user requested that the window be closed (by clicking the
-    /// close button).
+    #[must_use]
+    pub fn get(&self) -> WindowRef {
+        WindowRef {
+            pointer: rc::Rc::downgrade(&self.window_data.clone())
+        }
+    }
+
     #[must_use]
     pub fn was_close_requested(&self) -> bool {
         self.window_data.borrow().was_close_requested
@@ -119,10 +123,48 @@ impl Window {
 }
 
 impl Drop for Window {
-    /// Destroys the window
     fn drop(&mut self) {
         let hwnd = { self.window_data.borrow().hwnd };
         unsafe { DestroyWindow(hwnd) };
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WindowRef {
+    pointer: rc::Weak<RefCell<WindowData>>
+}
+
+impl WindowRef {
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        self.pointer.strong_count() > 0
+    }
+
+    #[must_use]
+    pub fn was_close_requested(&self) -> Option<bool> {
+        let pointer = self.pointer.upgrade()?;
+        let window_data = pointer.borrow();
+        Some(window_data.was_close_requested)
+    }
+
+    #[must_use]
+    pub fn handle(&self) -> Option<WindowHandle> {
+        let pointer = self.pointer.upgrade()?;
+        let window_data = pointer.borrow();
+        Some(WindowHandle {
+            hwnd: window_data.hwnd.0 as _,
+            hinstance: window_data.hinstance.0 as _
+        })
+    }
+
+    #[must_use]
+    pub fn framebuffer_size(&self) -> Option<PhysicalSize> {
+        let pointer = self.pointer.upgrade()?;
+        let window_data = pointer.borrow();
+        Some(PhysicalSize {
+            width: window_data.width,
+            height: window_data.height
+        })
     }
 }
 
@@ -133,7 +175,7 @@ impl Drop for Window {
 // Impl Note: This is a great place to stash anything that is shared between
 // windows.
 #[derive(Default)]
-pub struct EventLoop {
+pub(crate) struct EventLoop {
     // So that we get /* fields omitted */ in the docs
     #[doc(hidden)]
     _empty: u8,
@@ -178,13 +220,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, cs.lpCreateParams as _);
 
-        let window = cs.lpCreateParams.cast::<RefCell<WindowData>>();
+        let window = cs.lpCreateParams as *const RefCell<WindowData>;
         (*window).borrow_mut().hwnd = hwnd;
 
         return LRESULT::default();
     }
 
-    let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<WindowData>;
+    let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<WindowData>;
 
     if window.is_null() {
         return DefWindowProcW(hwnd, msg, wparam, lparam);

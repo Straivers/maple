@@ -41,13 +41,13 @@ fn main() {
 
 struct AppWindow {
     window: sys::window::Window,
-    swapchain: Box<vulkan::swapchain::Swapchain>,
+    swapchain: Box<vulkan::Swapchain>,
 }
 
 struct AppState {
     event_loop: sys::window::EventLoop,
     windows: Vec<AppWindow>,
-    vulkan: vulkan::context::Context,
+    vulkan: vulkan::Context,
 }
 
 impl AppState {
@@ -57,13 +57,13 @@ impl AppState {
         Self {
             event_loop: sys::window::EventLoop::new(),
             windows: Vec::new(),
-            vulkan: vulkan::context::Context::new(vulkan_lib, extra_validation).unwrap(),
+            vulkan: vulkan::Context::new(vulkan_lib, extra_validation).unwrap(),
         }
     }
 
     fn create_window(&mut self, title: &str) {
         let window = sys::window::Window::new(&self.event_loop, title);
-        let swapchain = Box::new(vulkan::swapchain::Swapchain::new(&mut self.vulkan, &window).unwrap());
+        let swapchain = Box::new(vulkan::Swapchain::new(&mut self.vulkan, &window).unwrap());
         self.windows.push(AppWindow { window, swapchain });
     }
 }
