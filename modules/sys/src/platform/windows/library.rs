@@ -11,7 +11,7 @@ use win32::{
 #[derive(Debug)]
 pub(crate) struct Library {
     library: HINSTANCE,
-    path: String
+    path: String,
 }
 
 impl Library {
@@ -25,7 +25,10 @@ impl Library {
             None
         } else {
             unsafe { SetErrorMode(SEM_FAILCRITICALERRORS) };
-            Some(Self { library, path: path.to_string() })
+            Some(Self {
+                library,
+                path: path.to_string(),
+            })
         }
     }
 

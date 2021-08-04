@@ -6,3 +6,6 @@ edition = "2018"
 [dependencies]
 vulkan = { path = "../vulkan" }
 sys = { path = "../sys" }
+
+[build-dependencies]
+shaderc = "0.7"

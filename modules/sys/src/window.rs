@@ -23,7 +23,7 @@ impl Window {
     #[must_use]
     pub fn get(&self) -> WindowRef {
         WindowRef {
-            window: self.window.get()
+            window: self.window.get(),
         }
     }
 
@@ -59,7 +59,7 @@ impl WindowRef {
     pub fn is_valid(&self) -> bool {
         self.window.is_valid()
     }
-    
+
     /// Checks if the user requested that the window be closed (by Alt+F4,
     /// clicking the close button, etc.).
     ///

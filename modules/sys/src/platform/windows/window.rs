@@ -96,7 +96,7 @@ impl Window {
     #[must_use]
     pub fn get(&self) -> WindowRef {
         WindowRef {
-            pointer: rc::Rc::downgrade(&self.window_data.clone())
+            pointer: rc::Rc::downgrade(&self.window_data.clone()),
         }
     }
 
@@ -131,7 +131,7 @@ impl Drop for Window {
 
 #[derive(Debug, Clone)]
 pub(crate) struct WindowRef {
-    pointer: rc::Weak<RefCell<WindowData>>
+    pointer: rc::Weak<RefCell<WindowData>>,
 }
 
 impl WindowRef {
@@ -153,7 +153,7 @@ impl WindowRef {
         let window_data = pointer.borrow();
         Some(WindowHandle {
             hwnd: window_data.hwnd.0 as _,
-            hinstance: window_data.hinstance.0 as _
+            hinstance: window_data.hinstance.0 as _,
         })
     }
 
@@ -163,7 +163,7 @@ impl WindowRef {
         let window_data = pointer.borrow();
         Some(PhysicalSize {
             width: window_data.width,
-            height: window_data.height
+            height: window_data.height,
         })
     }
 }

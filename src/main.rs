@@ -7,7 +7,7 @@
 // maple runner is a debug-only tool right now, can afford runtime compilation
 
 use clap::{App, Arg};
-use triangle_renderer::{TriangleRenderer, Swapchain};
+use triangle_renderer::{Swapchain, TriangleRenderer};
 
 #[derive(Debug)]
 struct CliOptions {
@@ -48,7 +48,7 @@ struct AppWindow {
 struct AppState {
     event_loop: sys::window::EventLoop,
     windows: Vec<AppWindow>,
-    renderer: TriangleRenderer
+    renderer: TriangleRenderer,
 }
 
 impl AppState {

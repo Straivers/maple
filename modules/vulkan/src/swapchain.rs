@@ -1,6 +1,6 @@
 use super::context::{load_vk_objects, Context};
 use super::error::{Error, Result};
-use sys::window::{WindowRef};
+use sys::window::WindowRef;
 
 use ash::{version::DeviceV1_0, vk};
 
@@ -122,8 +122,7 @@ impl Swapchain {
                             capabilities.max_image_extent.height,
                         ),
                     }
-                }
-                else {
+                } else {
                     return Err(Error::NativeWindowInUse);
                 }
             } else {
@@ -209,8 +208,7 @@ fn create_surface(context: &Context, window: &WindowRef) -> Result<vk::SurfaceKH
             .hwnd(handle.hwnd)
             .hinstance(handle.hinstance);
         Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
-    }
-    else {
+    } else {
         Err(Error::NativeWindowInUse)
     }
 }
