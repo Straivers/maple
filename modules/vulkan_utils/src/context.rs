@@ -57,7 +57,6 @@ pub struct Context {
     pipeline_cache: vk::PipelineCache,
     fence_pool: ArrayVec<vk::Fence, SYNC_POOL_SIZE>,
     semaphore_pool: ArrayVec<vk::Semaphore, SYNC_POOL_SIZE>,
-    pub graphics_command_pool: vk::CommandPool,
 
     debug: Option<VulkanDebug>,
 }
@@ -201,14 +200,6 @@ impl Context {
             pool
         };
 
-        let graphics_command_pool = {
-            let create_info = vk::CommandPoolCreateInfo::builder()
-                .queue_family_index(gpu.graphics_queue_index)
-                .flags(vk::CommandPoolCreateFlags::TRANSIENT | vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
-
-            unsafe { device.create_command_pool(&create_info, None) }?
-        };
-
         Ok(Self {
             library,
             instance,
@@ -222,7 +213,6 @@ impl Context {
             pipeline_cache,
             fence_pool,
             semaphore_pool,
-            graphics_command_pool,
             debug,
         })
     }
@@ -325,6 +315,17 @@ impl Context {
 
         Ok(pipeline)
     }
+
+    pub fn create_graphics_command_pool(&mut self, transient: bool) -> Result<vk::CommandPool> {
+        let mut create_info = vk::CommandPoolCreateInfo::builder()
+                .queue_family_index(self.gpu.graphics_queue_index);
+
+        if transient {
+            create_info = create_info.flags(vk::CommandPoolCreateFlags::TRANSIENT);
+        }
+
+        Ok(unsafe { self.device.create_command_pool(&create_info, None) }?)
+    }
 }
 
 impl Drop for Context {
@@ -346,8 +347,6 @@ impl Drop for Context {
             }
 
             self.device.destroy_pipeline_cache(self.pipeline_cache, None);
-
-            self.device.destroy_command_pool(self.graphics_command_pool, None);
 
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);

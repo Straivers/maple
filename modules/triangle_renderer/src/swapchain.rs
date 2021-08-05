@@ -9,12 +9,12 @@ pub struct Swapchain {
     pub current_frame: usize,
     pub swapchain: vulkan_utils::Swapchain,
     pub window: sys::window::WindowRef,
-    pub effect: Rc<dyn Effect>,
+    pub presentation_effect: Rc<dyn Effect>,
     pub framebuffers: Vec<vk::Framebuffer>,
     pub sync_acquire: [vk::Semaphore; FRAMES_IN_FLIGHT],
     pub sync_present: [vk::Semaphore; FRAMES_IN_FLIGHT],
     pub sync_fence: [vk::Fence; FRAMES_IN_FLIGHT],
-    pub running_commands: [Vec<vk::CommandBuffer>; FRAMES_IN_FLIGHT],
+    pub command_pools: [vk::CommandPool; FRAMES_IN_FLIGHT],
 }
 
 /*

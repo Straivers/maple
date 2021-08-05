@@ -6,6 +6,7 @@ use ash::vk;
 use vulkan_utils::Context;
 
 pub trait Effect {
+    fn render_pass(&self) -> vk::RenderPass;
     fn apply(&self, context: &Context, target: vk::Framebuffer, target_rect: vk::Rect2D, cmd: vk::CommandBuffer);
 }
 
@@ -102,6 +103,10 @@ impl TriangleEffect {
 }
 
 impl Effect for TriangleEffect {
+    fn render_pass(&self) -> vk::RenderPass {
+        self.render_pass
+    }
+
     fn apply(&self, context: &Context, target: vk::Framebuffer, target_rect: vk::Rect2D, cmd: vk::CommandBuffer) {
         {
             let clear_values = [vk::ClearValue {

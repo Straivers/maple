@@ -70,100 +70,18 @@ impl Swapchain {
             )
         }?);
 
-        let capabilities = unsafe {
-            context
-                .surface_api
-                .get_physical_device_surface_capabilities(context.gpu.handle, surface)?
-        };
-
-        let format = {
-            let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
-                context.surface_api.fp().get_physical_device_surface_formats_khr(
-                    context.gpu.handle,
-                    surface,
-                    count,
-                    ptr,
-                )
-            })?;
-
-            *formats
-                .iter()
-                .find(|f| f.format == vk::Format::B8G8R8A8_SRGB && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
-                .unwrap_or(&formats[0])
-        };
-
-        let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
-            context.surface_api.fp().get_physical_device_surface_present_modes_khr(
-                context.gpu.handle,
-                surface,
-                count,
-                ptr,
-            )
-        })?
-        .iter()
-        .find(|p| **p == vk::PresentModeKHR::MAILBOX)
-        .unwrap_or(&vk::PresentModeKHR::FIFO);
-
-        let image_size = {
-            if capabilities.current_extent.width == u32::MAX {
-                if let Some(size) = window.framebuffer_size() {
-                    vk::Extent2D {
-                        width: u32::from(size.width)
-                            .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
-                        height: u32::from(size.height).clamp(
-                            capabilities.min_image_extent.height,
-                            capabilities.max_image_extent.height,
-                        ),
-                    }
-                } else {
-                    return Err(Error::NativeWindowInUse);
-                }
-            } else {
-                capabilities.current_extent
+        let size = if let Some(s) = window.framebuffer_size() {
+            vk::Extent2D {
+                width: u32::from(s.width),
+                height: u32::from(s.height),
             }
+        }
+        else {
+            return Err(Error::NativeWindowInUse);
         };
 
-        let min_images = preferred_num_images.clamp(capabilities.min_image_count, capabilities.max_image_count);
-
-        let swapchain = {
-            let mut create_info = vk::SwapchainCreateInfoKHR::builder()
-                .surface(surface)
-                .min_image_count(min_images)
-                .image_format(format.format)
-                .image_color_space(format.color_space)
-                .image_extent(image_size)
-                .image_array_layers(1)
-                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                .pre_transform(capabilities.current_transform)
-                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                .present_mode(present_mode)
-                .clipped(true);
-
-            let queue_family_indices = [context.gpu.graphics_queue_index, context.gpu.present_queue_index];
-
-            create_info = if queue_family_indices[0] == queue_family_indices[1] {
-                create_info.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            } else {
-                create_info
-                    .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                    .queue_family_indices(&queue_family_indices)
-            };
-
-            unsafe { context.swapchain_api.create_swapchain(&create_info, None) }?
-        };
-
-        let mut images = Vec::new();
-        get_swapchain_images(context, swapchain, format.format, &mut images)?;
-
-        Ok(Swapchain {
-            format: format.format,
-            color_space: format.color_space,
-            present_mode,
-            surface,
-            handle: swapchain,
-            image_size,
-            images,
-        })
+        let image_buffer = Vec::with_capacity(preferred_num_images as usize);
+        create_swapchain(context, size, surface, image_buffer, None)
     }
 
     pub fn destroy(self, context: &mut Context) {
@@ -185,8 +103,22 @@ impl Swapchain {
         }?)
     }
 
-    pub fn resize(&self, context: &Context, extent: vk::Extent2D) -> Result<()> {
-        todo!()
+    pub fn resize(&mut self, context: &Context, extent: vk::Extent2D) -> Result<()> {
+        for image in &self.images {
+            unsafe {
+                context.device.destroy_image_view(image.view, None);
+            }
+        }
+        self.images.clear();
+
+        let old_handle = self.handle;
+        *self = create_swapchain(context, extent, self.surface, std::mem::take(&mut self.images), Some(old_handle))?;
+
+        unsafe {
+            context.swapchain_api.destroy_swapchain(old_handle, None);
+        }
+
+        Ok(())
     }
 }
 
@@ -200,6 +132,106 @@ fn create_surface(context: &Context, window: &WindowRef) -> Result<vk::SurfaceKH
     } else {
         Err(Error::NativeWindowInUse)
     }
+}
+
+fn create_swapchain(
+    context: &Context,
+    size: vk::Extent2D,
+    surface: vk::SurfaceKHR,
+    mut image_buffer: Vec<SwapchainImage>,
+    old_swapchain: Option<vk::SwapchainKHR>
+) -> Result<Swapchain> {
+    let capabilities = unsafe {
+        context
+            .surface_api
+            .get_physical_device_surface_capabilities(context.gpu.handle, surface)?
+    };
+
+    let format = {
+        let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
+            context.surface_api.fp().get_physical_device_surface_formats_khr(
+                context.gpu.handle,
+                surface,
+                count,
+                ptr,
+            )
+        })?;
+
+        *formats
+            .iter()
+            .find(|f| f.format == vk::Format::B8G8R8A8_SRGB && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+            .unwrap_or(&formats[0])
+    };
+
+    let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
+        context.surface_api.fp().get_physical_device_surface_present_modes_khr(
+            context.gpu.handle,
+            surface,
+            count,
+            ptr,
+        )
+    })?
+    .iter()
+    .find(|p| **p == vk::PresentModeKHR::MAILBOX)
+    .unwrap_or(&vk::PresentModeKHR::FIFO);
+
+    let image_size = {
+        if capabilities.current_extent.width == u32::MAX {
+            vk::Extent2D {
+                width: size.width
+                    .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
+                height: size.height.clamp(
+                    capabilities.min_image_extent.height,
+                    capabilities.max_image_extent.height,
+                ),
+            }
+        } else {
+            capabilities.current_extent
+        }
+    };
+
+    let min_images = (image_buffer.capacity() as u32).clamp(capabilities.min_image_count, capabilities.max_image_count);
+
+    let mut create_info = vk::SwapchainCreateInfoKHR::builder()
+        .surface(surface)
+        .min_image_count(min_images)
+        .image_format(format.format)
+        .image_color_space(format.color_space)
+        .image_extent(image_size)
+        .image_array_layers(1)
+        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+        .pre_transform(capabilities.current_transform)
+        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+        .present_mode(present_mode)
+        .clipped(true);
+
+    let queue_family_indices = [context.gpu.graphics_queue_index, context.gpu.present_queue_index];
+    if queue_family_indices[0] == queue_family_indices[1] {
+        create_info.image_sharing_mode = vk::SharingMode::EXCLUSIVE;
+    }
+    else {
+        create_info.image_sharing_mode = vk::SharingMode::CONCURRENT;
+        create_info.queue_family_index_count = 2;
+        create_info.p_queue_family_indices = queue_family_indices.as_ptr();
+    }
+
+    if let Some(old) = old_swapchain {
+        create_info.old_swapchain = old;
+    }
+
+    let handle = unsafe { context.swapchain_api.create_swapchain(&create_info, None) }?;
+
+    get_swapchain_images(context, handle, format.format, &mut image_buffer)?;
+
+    Ok(Swapchain {
+        format: create_info.image_format,
+        color_space: create_info.image_color_space,
+        present_mode: create_info.present_mode,
+        surface,
+        handle,
+        image_size: create_info.image_extent,
+        images: image_buffer,
+    })
 }
 
 fn get_swapchain_images(
