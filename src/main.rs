@@ -96,7 +96,7 @@ fn run(cli_options: &CliOptions) {
         }
 
         for window in &mut app_state.windows {
-            app_state.renderer.render_to(&mut window.swapchain);
+            app_state.renderer.render_to(&mut window.swapchain).unwrap();
         }
     }
 }

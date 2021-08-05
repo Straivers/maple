@@ -5,19 +5,12 @@ use sys::window::WindowRef;
 use ash::vk;
 
 /// Triple buffering
-const FRAMES_IN_FLIGHT: u32 = 2;
 const MAX_SWAPCHAIN_IMAGES: usize = 32;
 
 #[derive(Debug, Default)]
-struct SwapchainImage {
-    image: vk::Image,
-    view: vk::ImageView,
-}
-
-#[derive(Debug)]
-struct SwapchainSync {
-    acquire_semaphore: vk::Semaphore,
-    present_semaphore: vk::Semaphore,
+pub struct SwapchainImage {
+    pub image: vk::Image,
+    pub view: vk::ImageView,
 }
 
 #[derive(Debug)]
@@ -34,12 +27,12 @@ pub struct Swapchain {
     surface: vk::SurfaceKHR,
 
     /// A handle to the swapchain, managed by the Vulkan drivers.
-    handle: vk::SwapchainKHR,
+    pub handle: vk::SwapchainKHR,
+
+    pub image_size: vk::Extent2D,
 
     /// The images used by the swapchain.
-    images: Vec<SwapchainImage>,
-
-    sync_objects: [SwapchainSync; FRAMES_IN_FLIGHT as usize],
+    pub images: Vec<SwapchainImage>,
 }
 
 impl Swapchain {
@@ -65,7 +58,7 @@ impl Swapchain {
     /// tested for surface support through platform-specific methods (e.g. the
     /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
     /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(context: &mut Context, window: &WindowRef) -> Result<Self> {
+    pub fn new(context: &mut Context, window: &WindowRef, preferred_num_images: u32) -> Result<Self> {
         let surface = create_surface(context, window)?;
 
         // We test with platform-specific APIs during surface creation
@@ -111,7 +104,7 @@ impl Swapchain {
         .find(|p| **p == vk::PresentModeKHR::MAILBOX)
         .unwrap_or(&vk::PresentModeKHR::FIFO);
 
-        let extent = {
+        let image_size = {
             if capabilities.current_extent.width == u32::MAX {
                 if let Some(size) = window.framebuffer_size() {
                     vk::Extent2D {
@@ -130,7 +123,7 @@ impl Swapchain {
             }
         };
 
-        let min_images = FRAMES_IN_FLIGHT.clamp(capabilities.min_image_count, capabilities.max_image_count);
+        let min_images = preferred_num_images.clamp(capabilities.min_image_count, capabilities.max_image_count);
 
         let swapchain = {
             let mut create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -138,7 +131,7 @@ impl Swapchain {
                 .min_image_count(min_images)
                 .image_format(format.format)
                 .image_color_space(format.color_space)
-                .image_extent(extent)
+                .image_extent(image_size)
                 .image_array_layers(1)
                 .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
                 .pre_transform(capabilities.current_transform)
@@ -162,25 +155,14 @@ impl Swapchain {
         let mut images = Vec::new();
         get_swapchain_images(context, swapchain, format.format, &mut images)?;
 
-        let sync_objects = [
-            SwapchainSync {
-                acquire_semaphore: context.get_or_create_semaphore()?,
-                present_semaphore: context.get_or_create_semaphore()?,
-            },
-            SwapchainSync {
-                acquire_semaphore: context.get_or_create_semaphore()?,
-                present_semaphore: context.get_or_create_semaphore()?,
-            },
-        ];
-
         Ok(Swapchain {
             format: format.format,
             color_space: format.color_space,
             present_mode,
             surface,
             handle: swapchain,
+            image_size,
             images,
-            sync_objects,
         })
     }
 
@@ -190,14 +172,21 @@ impl Swapchain {
                 context.device.destroy_image_view(image.view, None);
             }
 
-            for sync in self.sync_objects {
-                context.free_semaphore(sync.acquire_semaphore);
-                context.free_semaphore(sync.present_semaphore);
-            }
-
             context.swapchain_api.destroy_swapchain(self.handle, None);
             context.surface_api.destroy_surface(self.surface, None);
         }
+    }
+
+    pub fn get_image(&self, context: &Context, acquire_semaphore: vk::Semaphore) -> Result<(u32, bool)> {
+        Ok(unsafe {
+            context
+                .swapchain_api
+                .acquire_next_image(self.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
+        }?)
+    }
+
+    pub fn resize(&self, context: &Context, extent: vk::Extent2D) -> Result<()> {
+        todo!()
     }
 }
 

@@ -57,6 +57,7 @@ pub struct Context {
     pipeline_cache: vk::PipelineCache,
     fence_pool: ArrayVec<vk::Fence, SYNC_POOL_SIZE>,
     semaphore_pool: ArrayVec<vk::Semaphore, SYNC_POOL_SIZE>,
+    pub graphics_command_pool: vk::CommandPool,
 
     debug: Option<VulkanDebug>,
 }
@@ -200,6 +201,14 @@ impl Context {
             pool
         };
 
+        let graphics_command_pool = {
+            let create_info = vk::CommandPoolCreateInfo::builder()
+                .queue_family_index(gpu.graphics_queue_index)
+                .flags(vk::CommandPoolCreateFlags::TRANSIENT | vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+
+            unsafe { device.create_command_pool(&create_info, None) }?
+        };
+
         Ok(Self {
             library,
             instance,
@@ -213,6 +222,7 @@ impl Context {
             pipeline_cache,
             fence_pool,
             semaphore_pool,
+            graphics_command_pool,
             debug,
         })
     }
@@ -298,9 +308,19 @@ impl Context {
 
     pub fn create_graphics_pipeline(&mut self, create_info: &vk::GraphicsPipelineCreateInfo) -> Result<vk::Pipeline> {
         let mut pipeline = vk::Pipeline::default();
-        
+
         unsafe {
-            self.device.fp_v1_0().create_graphics_pipelines(self.device.handle(), self.pipeline_cache, 1, create_info, std::ptr::null(), &mut pipeline).result()?;
+            self.device
+                .fp_v1_0()
+                .create_graphics_pipelines(
+                    self.device.handle(),
+                    self.pipeline_cache,
+                    1,
+                    create_info,
+                    std::ptr::null(),
+                    &mut pipeline,
+                )
+                .result()?;
         }
 
         Ok(pipeline)
@@ -326,6 +346,8 @@ impl Drop for Context {
             }
 
             self.device.destroy_pipeline_cache(self.pipeline_cache, None);
+
+            self.device.destroy_command_pool(self.graphics_command_pool, None);
 
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);

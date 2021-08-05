@@ -49,7 +49,8 @@ impl Library {
     /// Attempts to retrieve a symbol stored within the library, returns `None`
     /// if it was not found.
     pub fn get_symbol(&self, name: &CStr) -> Result<*mut c_void, Error> {
-        self.library.get_symbol(name).ok_or(Error::SymbolNotFound(
+        // Delegate to avoid allocating eagerly
+        self.library.get_symbol(name).ok_or_else(|| Error::SymbolNotFound(
             self.path().to_string(),
             name.to_string_lossy().to_string(),
         ))
