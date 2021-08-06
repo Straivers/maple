@@ -146,7 +146,6 @@ dependencies = [
  "ash",
  "shaderc",
  "sys",
- "utils",
  "vulkan_utils",
 ]
 

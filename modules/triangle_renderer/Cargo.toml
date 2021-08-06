@@ -7,7 +7,6 @@ edition = "2018"
 ash = { version = "0.33", default-features = false }
 vulkan_utils = { path = "../vulkan_utils" }
 sys = { path = "../sys" }
-utils = { path = "../utils" }
 
 [build-dependencies]
 shaderc = "0.7"

@@ -167,14 +167,14 @@ fn create_renderpass(context: &Context, format: vk::Format) -> Result<vk::Render
         .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
         .build()];
 
-    let attachment_reference = vk::AttachmentReference::builder()
+    let attachment_reference = [vk::AttachmentReference::builder()
         .attachment(0)
         .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .build();
+        .build()];
 
     let subpasses = [vk::SubpassDescription::builder()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&[attachment_reference])
+        .color_attachments(&attachment_reference)
         .build()];
 
     let dependencies = [vk::SubpassDependency::builder()

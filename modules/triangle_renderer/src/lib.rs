@@ -1,6 +1,5 @@
 use ash::vk;
 use sys::library::Library;
-use utils::array_vec::ArrayVec;
 
 mod constants;
 mod effect;

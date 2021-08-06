@@ -141,18 +141,19 @@ impl Context {
         let gpu = select_physical_device(&instance, &os_surface_api)?;
 
         let device = {
+            let priorities = [1.0];
             let mut queue_create_infos = ArrayVec::<vk::DeviceQueueCreateInfo, 2>::new();
             queue_create_infos.push(
                 *vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(gpu.graphics_queue_index)
-                    .queue_priorities(&[1.0]),
+                    .queue_priorities(&priorities),
             );
 
             if gpu.present_queue_index != gpu.graphics_queue_index {
                 queue_create_infos.push(
                     *vk::DeviceQueueCreateInfo::builder()
                         .queue_family_index(gpu.present_queue_index)
-                        .queue_priorities(&[1.0]),
+                        .queue_priorities(&priorities),
                 );
             }
 
