@@ -317,8 +317,7 @@ impl Context {
     }
 
     pub fn create_graphics_command_pool(&mut self, transient: bool) -> Result<vk::CommandPool> {
-        let mut create_info = vk::CommandPoolCreateInfo::builder()
-                .queue_family_index(self.gpu.graphics_queue_index);
+        let mut create_info = vk::CommandPoolCreateInfo::builder().queue_family_index(self.gpu.graphics_queue_index);
 
         if transient {
             create_info = create_info.flags(vk::CommandPoolCreateFlags::TRANSIENT);
@@ -360,6 +359,10 @@ unsafe extern "system" fn debug_callback(
     callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _user_data: *mut c_void,
 ) -> vk::Bool32 {
+    if _severity < vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        return vk::FALSE;
+    }
+
     println!("Vulkan: {:?}", CStr::from_ptr((*callback_data).p_message));
 
     vk::FALSE

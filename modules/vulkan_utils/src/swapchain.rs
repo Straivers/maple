@@ -75,8 +75,7 @@ impl Swapchain {
                 width: u32::from(s.width),
                 height: u32::from(s.height),
             }
-        }
-        else {
+        } else {
             return Err(Error::NativeWindowInUse);
         };
 
@@ -112,7 +111,13 @@ impl Swapchain {
         self.images.clear();
 
         let old_handle = self.handle;
-        *self = create_swapchain(context, extent, self.surface, std::mem::take(&mut self.images), Some(old_handle))?;
+        *self = create_swapchain(
+            context,
+            extent,
+            self.surface,
+            std::mem::take(&mut self.images),
+            Some(old_handle),
+        )?;
 
         unsafe {
             context.swapchain_api.destroy_swapchain(old_handle, None);
@@ -139,7 +144,7 @@ fn create_swapchain(
     size: vk::Extent2D,
     surface: vk::SurfaceKHR,
     mut image_buffer: Vec<SwapchainImage>,
-    old_swapchain: Option<vk::SwapchainKHR>
+    old_swapchain: Option<vk::SwapchainKHR>,
 ) -> Result<Swapchain> {
     let capabilities = unsafe {
         context
@@ -149,12 +154,10 @@ fn create_swapchain(
 
     let format = {
         let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
-            context.surface_api.fp().get_physical_device_surface_formats_khr(
-                context.gpu.handle,
-                surface,
-                count,
-                ptr,
-            )
+            context
+                .surface_api
+                .fp()
+                .get_physical_device_surface_formats_khr(context.gpu.handle, surface, count, ptr)
         })?;
 
         *formats
@@ -164,12 +167,10 @@ fn create_swapchain(
     };
 
     let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
-        context.surface_api.fp().get_physical_device_surface_present_modes_khr(
-            context.gpu.handle,
-            surface,
-            count,
-            ptr,
-        )
+        context
+            .surface_api
+            .fp()
+            .get_physical_device_surface_present_modes_khr(context.gpu.handle, surface, count, ptr)
     })?
     .iter()
     .find(|p| **p == vk::PresentModeKHR::MAILBOX)
@@ -178,7 +179,8 @@ fn create_swapchain(
     let image_size = {
         if capabilities.current_extent.width == u32::MAX {
             vk::Extent2D {
-                width: size.width
+                width: size
+                    .width
                     .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
                 height: size.height.clamp(
                     capabilities.min_image_extent.height,
@@ -208,8 +210,7 @@ fn create_swapchain(
     let queue_family_indices = [context.gpu.graphics_queue_index, context.gpu.present_queue_index];
     if queue_family_indices[0] == queue_family_indices[1] {
         create_info.image_sharing_mode = vk::SharingMode::EXCLUSIVE;
-    }
-    else {
+    } else {
         create_info.image_sharing_mode = vk::SharingMode::CONCURRENT;
         create_info.queue_family_index_count = 2;
         create_info.p_queue_family_indices = queue_family_indices.as_ptr();

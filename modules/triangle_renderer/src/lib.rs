@@ -1,5 +1,6 @@
 use ash::vk;
 use sys::library::Library;
+use utils::array_vec::ArrayVec;
 
 mod constants;
 mod effect;
@@ -85,7 +86,9 @@ impl TriangleRenderer {
             }
 
             for i in 0..FRAMES_IN_FLIGHT {
-                self.vulkan.device.destroy_command_pool(swapchain.command_pools[i], None);
+                self.vulkan
+                    .device
+                    .destroy_command_pool(swapchain.command_pools[i], None);
                 self.vulkan.free_semaphore(swapchain.sync_acquire[i]);
                 self.vulkan.free_semaphore(swapchain.sync_present[i]);
                 self.vulkan.free_fence(swapchain.sync_fence[i]);
@@ -98,76 +101,40 @@ impl TriangleRenderer {
     }
 
     pub fn render_to(&mut self, swapchain: &mut Swapchain) -> Result<()> {
-        let framebuffer_size = if let Some(size) = swapchain.window.framebuffer_size() {
-            size
-        } else {
-            return Err(Error::WindowNotValid);
-        };
-
-        let framebuffer_extent = vk::Extent2D {
-            width: framebuffer_size.width.into(),
-            height: framebuffer_size.height.into(),
-        };
-
-        let was_resized = swapchain.swapchain.image_size != framebuffer_extent;
-
-        let acquire_semaphore = swapchain.sync_acquire[swapchain.current_frame];
-        let present_semaphore = swapchain.sync_present[swapchain.current_frame];
-        let fence = swapchain.sync_fence[swapchain.current_frame];
+        let frame = swapchain.frame_in_flight()?;
 
         unsafe {
-            self.vulkan.device.wait_for_fences(&[fence], true, u64::MAX)?;
-            self.vulkan.device.reset_fences(&[fence])?;
+            self.vulkan
+                .device
+                .wait_for_fences(&[frame.submit_fence], true, u64::MAX)?;
         }
 
         let image_index = {
-            let (index, update) = swapchain.swapchain.get_image(&self.vulkan, acquire_semaphore)?;
-            if update || was_resized {
-                unsafe {
-                    self.vulkan.device.wait_for_fences(&swapchain.sync_fence, true, u64::MAX)?;
-                }
-
-                for pool in &swapchain.command_pools {
-                    unsafe { self.vulkan.device.reset_command_pool(*pool, vk::CommandPoolResetFlags::empty())?; }
-                }
-
-                let old_format = swapchain.swapchain.format;
-                swapchain.swapchain.resize(&self.vulkan, framebuffer_extent)?;
-
-                if old_format != swapchain.swapchain.format {
-                    swapchain.presentation_effect = self.effect_base.get_effect(&mut self.vulkan, swapchain.swapchain.format)?;
-                }
-
-                for framebuffer in swapchain.framebuffers.drain(..) {
-                    unsafe {
-                        self.vulkan.device.destroy_framebuffer(framebuffer, None);
+            let (index, update) = match swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore) {
+                Ok((index, _)) => (index, false),
+                Err(err) => {
+                    if err == vulkan_utils::Error::SwapchainOutOfDate {
+                        (0, true)
+                    } else {
+                        return Err(Error::from(err));
                     }
                 }
+            };
 
-                for image in &swapchain.swapchain.images {
-                    let attachments = [image.view];
-                    let create_info = vk::FramebufferCreateInfo::builder()
-                        .render_pass(swapchain.presentation_effect.render_pass())
-                        .attachments(&attachments)
-                        .width(framebuffer_extent.width.into())
-                        .height(framebuffer_extent.height.into())
-                        .layers(1);
-
-                    swapchain.framebuffers.push(unsafe { self.vulkan.device.create_framebuffer(&create_info, None) }?);
-                }
-
-                let (index2, update2) = swapchain.swapchain.get_image(&self.vulkan, acquire_semaphore)?;
-                assert!(!update2, "vkAcquireNextImage() required resizing twice in a row.");
-                index2
-            } else {
-                index
+            if update {
+                self.resize_swapchain(swapchain)?;
+                return Ok(());
             }
+
+            index
         };
 
         let command_pool = swapchain.command_pools[swapchain.current_frame];
 
         unsafe {
-            self.vulkan.device.reset_command_pool(command_pool, vk::CommandPoolResetFlags::empty())?;
+            self.vulkan
+                .device
+                .reset_command_pool(command_pool, vk::CommandPoolResetFlags::empty())?;
         }
 
         let command_buffer = {
@@ -191,10 +158,7 @@ impl TriangleRenderer {
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D {
-                width: framebuffer_size.width.into(),
-                height: framebuffer_size.height.into(),
-            },
+            extent: frame.extent,
         };
 
         {
@@ -214,8 +178,8 @@ impl TriangleRenderer {
         }
 
         {
-            let wait = [acquire_semaphore];
-            let signal = [present_semaphore];
+            let wait = [frame.acquire_semaphore];
+            let signal = [frame.present_semaphore];
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             let commands = [command_buffer];
 
@@ -227,14 +191,15 @@ impl TriangleRenderer {
                 .build();
 
             unsafe {
+                self.vulkan.device.reset_fences(&[frame.submit_fence])?;
                 self.vulkan
                     .device
-                    .queue_submit(self.vulkan.graphics_queue, &[submit_info], fence)?;
+                    .queue_submit(self.vulkan.graphics_queue, &[submit_info], frame.submit_fence)?;
             }
         }
 
-        {
-            let wait = [present_semaphore];
+        let present_status = {
+            let wait = [frame.present_semaphore];
             let swapchains = [swapchain.swapchain.handle];
             let image_indices = [image_index];
             let present_info = vk::PresentInfoKHR::builder()
@@ -245,11 +210,82 @@ impl TriangleRenderer {
             unsafe {
                 self.vulkan
                     .swapchain_api
-                    .queue_present(self.vulkan.graphics_queue, &present_info)?
-            };
+                    .queue_present(self.vulkan.graphics_queue, &present_info)
+            }
+        };
+        
+        if match present_status {
+            Ok(update) => update,
+            Err(err) => {
+                if err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                    true
+                } else {
+                    return Err(Error::from(err));
+                }
+            }
+        } {
+            self.resize_swapchain(swapchain)?;
+        }
+        
+        swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
+        Ok(())
+    }
+
+    fn resize_swapchain(&mut self, swapchain: &mut Swapchain) -> Result<()> {
+        let framebuffer_size = if let Some(size) = swapchain.window.framebuffer_size() {
+            size
+        } else {
+            return Err(Error::WindowNotValid);
+        };
+
+        let framebuffer_extent = vk::Extent2D {
+            width: framebuffer_size.width.into(),
+            height: framebuffer_size.height.into(),
+        };
+
+        unsafe {
+            // We explicitly don't reset fences here, because we need them to be
+            // signaled when we try to render again.
+            self.vulkan.device.wait_for_fences(&swapchain.sync_fence, true, u64::MAX)?;
         }
 
-        swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
+        for pool in &swapchain.command_pools {
+            unsafe {
+                self.vulkan
+                    .device
+                    .reset_command_pool(*pool, vk::CommandPoolResetFlags::empty())?;
+            }
+        }
+
+        let old_format = swapchain.swapchain.format;
+        swapchain.swapchain.resize(&self.vulkan, framebuffer_extent)?;
+
+        if old_format != swapchain.swapchain.format {
+            swapchain.presentation_effect = self
+                .effect_base
+                .get_effect(&mut self.vulkan, swapchain.swapchain.format)?;
+        }
+
+        for framebuffer in swapchain.framebuffers.drain(..) {
+            unsafe {
+                self.vulkan.device.destroy_framebuffer(framebuffer, None);
+            }
+        }
+
+        for image in &swapchain.swapchain.images {
+            let attachments = [image.view];
+            let create_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(swapchain.presentation_effect.render_pass())
+                .attachments(&attachments)
+                .width(framebuffer_extent.width)
+                .height(framebuffer_extent.height)
+                .layers(1);
+
+            swapchain
+                .framebuffers
+                .push(unsafe { self.vulkan.device.create_framebuffer(&create_info, None) }?);
+        }
+
         Ok(())
     }
 }
