@@ -212,7 +212,7 @@ impl TriangleRenderer {
                     .queue_present(self.vulkan.graphics_queue, &present_info)
             }
         };
-        
+
         if match present_status {
             Ok(update) => update,
             Err(err) => {
@@ -225,7 +225,7 @@ impl TriangleRenderer {
         } {
             self.resize_swapchain(swapchain)?;
         }
-        
+
         swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
         Ok(())
     }
@@ -245,7 +245,9 @@ impl TriangleRenderer {
         unsafe {
             // We explicitly don't reset fences here, because we need them to be
             // signaled when we try to render again.
-            self.vulkan.device.wait_for_fences(&swapchain.sync_fence, true, u64::MAX)?;
+            self.vulkan
+                .device
+                .wait_for_fences(&swapchain.sync_fence, true, u64::MAX)?;
         }
 
         for pool in &swapchain.command_pools {

@@ -20,11 +20,13 @@ fn build_apis() {
             },
             UI::{
                 WindowsAndMessaging::{
-                    WNDCLASSW, CREATESTRUCTW, DefWindowProcW, CW_USEDEFAULT,
-                    WM_CREATE, WM_CLOSE, WM_QUIT, WM_DESTROY, WM_SIZE,
-                    RegisterClassW, CreateWindowExW, DestroyWindow, ShowWindow,
-                    PeekMessageW, TranslateMessage, DispatchMessageW,
-                    SetWindowLongPtrW, GetWindowLongPtrW, GetClientRect,
+                    // Constants
+                    CW_USEDEFAULT, IDC_ARROW, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE,
+                    // Structs
+                    CREATESTRUCTW, MSG, WINDOW_EX_STYLE, WNDCLASSW,
+                    // Functions
+                    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, LoadCursorW,
+                    PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
                 },
                 HiDpi::GetProcessDpiAwareness,
             },

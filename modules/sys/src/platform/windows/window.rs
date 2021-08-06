@@ -4,10 +4,10 @@ use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, PeekMessageW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, LoadCursorW, PeekMessageW,
         RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
-        CW_USEDEFAULT, GWLP_USERDATA, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY,
-        WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE,
+        WM_DESTROY, WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -59,11 +59,14 @@ impl Window {
             _pin: PhantomPinned,
         }));
 
+        let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
+
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW,
             hInstance: hinstance,
             lpfnWndProc: Some(wndproc),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
+            hCursor: cursor,
             ..WNDCLASSW::default()
         };
 
