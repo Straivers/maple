@@ -73,6 +73,17 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
+    /// Consumes the vector and calls a closure on every element, allowing it to
+    /// drop at the end of the closure.
+    pub fn empty<F>(mut self, mut f: F)
+    where
+        F: FnMut(T),
+    {
+        for i in 0..self.length {
+            f(unsafe { std::ptr::read(self.as_mut_ptr().add(i)) });
+        }
+    }
+
     /// Pushes a new element to the back of the vector.
     ///
     /// # Panics

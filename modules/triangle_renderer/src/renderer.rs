@@ -1,10 +1,10 @@
 use ash::vk;
 use sys::library::Library;
 
-use crate::error::{Result, Error};
-use crate::swapchain::Swapchain;
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::TriangleEffectBase;
+use crate::error::{Error, Result};
+use crate::swapchain::Swapchain;
 
 pub struct TriangleRenderer {
     vulkan: vulkan_utils::Context,
@@ -48,20 +48,20 @@ impl TriangleRenderer {
             presentation_effect: effect,
             framebuffers,
             sync_acquire: [
-                self.vulkan.get_or_create_semaphore()?,
-                self.vulkan.get_or_create_semaphore()?,
+                self.vulkan.get_or_create_semaphore(),
+                self.vulkan.get_or_create_semaphore(),
             ],
             sync_present: [
-                self.vulkan.get_or_create_semaphore()?,
-                self.vulkan.get_or_create_semaphore()?,
+                self.vulkan.get_or_create_semaphore(),
+                self.vulkan.get_or_create_semaphore(),
             ],
             sync_fence: [
-                self.vulkan.get_or_create_fence(true)?,
-                self.vulkan.get_or_create_fence(true)?,
+                self.vulkan.get_or_create_fence(true),
+                self.vulkan.get_or_create_fence(true),
             ],
             command_pools: [
-                self.vulkan.create_graphics_command_pool(true)?,
-                self.vulkan.create_graphics_command_pool(true)?,
+                self.vulkan.create_graphics_command_pool(true),
+                self.vulkan.create_graphics_command_pool(true),
             ],
         })
     }

@@ -5,6 +5,11 @@ use crate::error::Result;
 use ash::vk;
 use vulkan_utils::Context;
 
+#[derive(Debug)]
+pub enum EffectError {
+    InvalidShader,
+}
+
 pub trait Effect {
     fn render_pass(&self) -> vk::RenderPass;
     fn apply(&self, context: &Context, target: vk::Framebuffer, target_rect: vk::Rect2D, cmd: vk::CommandBuffer);
@@ -19,14 +24,13 @@ pub struct TriangleEffectBase {
 }
 
 impl TriangleEffectBase {
-    pub fn new(context: &mut Context) -> Result<Self> {
-        let vertex_shader = context.create_shader(TRIANGLE_VERTEX_SHADER)?;
-        let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER)?;
+    pub fn new(context: &mut Context) -> std::result::Result<Self, EffectError> {
+        let vertex_shader = context.create_shader(TRIANGLE_VERTEX_SHADER);
+        let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER);
 
         let pipeline_layout = {
             let create_info = vk::PipelineLayoutCreateInfo::builder();
-
-            unsafe { context.device.create_pipeline_layout(&create_info, None) }?
+            context.create_pipeline_layout(&create_info)
         };
 
         Ok(Self {
@@ -92,7 +96,7 @@ impl TriangleEffect {
             base.fragment_shader,
             render_pass,
             base.pipeline_layout,
-        )?;
+        );
 
         Ok(Self {
             format: output_format,
@@ -200,7 +204,7 @@ fn create_pipeline(
     fragment_shader: vk::ShaderModule,
     render_pass: vk::RenderPass,
     pipeline_layout: vk::PipelineLayout,
-) -> Result<vk::Pipeline> {
+) -> vk::Pipeline {
     let shader_stages = [
         vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::VERTEX)
@@ -268,5 +272,5 @@ fn create_pipeline(
         .render_pass(render_pass)
         .subpass(0);
 
-    Ok(context.create_graphics_pipeline(&create_info)?)
+    context.create_graphics_pipeline(&create_info)
 }

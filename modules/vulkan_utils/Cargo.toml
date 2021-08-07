@@ -7,3 +7,4 @@ edition = "2018"
 ash = { version = "0.33", default-features = false }
 sys = { path = "../sys" }
 utils = { path = "../utils" }
+thiserror = "1.0.26"

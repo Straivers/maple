@@ -19,11 +19,10 @@ use ash::{
     InstanceError::{LoadError, VkError},
 };
 
+use thiserror::Error;
+
 use sys::library::Library;
-
 use utils::array_vec::ArrayVec;
-
-use super::error::{Error as VulkanError, Result};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
@@ -35,9 +34,37 @@ const DEBUG_UTILS_EXTENSION_NAME: *const c_char = "VK_EXT_debug_utils\0\0".as_pt
 const WIN32_SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_win32_surface\0".as_ptr().cast();
 const SWAPCHAIN_EXTENSION_NAME: *const c_char = "VK_KHR_swapchain\0".as_ptr().cast();
 
+#[derive(Error, Debug)]
+pub enum InitError {
+    #[error("No compatible GPU was found")]
+    NoGpu,
+    #[error("The driver crashed")]
+    DriverLost,
+    #[error("The driver does not support Vulkan 1.2")]
+    DriverIncompatible,
+    #[error("The driver failed for an implementation defined reason")]
+    UnknownReason,
+    #[error("The application attempted to create more than one context. Only applies in certain OSes")]
+    InitMoreThanOnce,
+    #[error(transparent)]
+    Unexpected(#[from] vk::Result),
+}
+
 pub struct VulkanDebug {
     api: DebugUtils,
     callback: vk::DebugUtilsMessengerEXT,
+}
+
+impl VulkanDebug {
+    fn new(
+        entry: &EntryCustom<Library>,
+        instance: &Instance,
+        create_info: &vk::DebugUtilsMessengerCreateInfoEXT,
+    ) -> Self {
+        let api = DebugUtils::new(entry, instance);
+        let callback = unsafe { api.create_debug_utils_messenger(create_info, None).unwrap() };
+        Self { api, callback }
+    }
 }
 
 pub struct Context {
@@ -64,21 +91,7 @@ pub struct Context {
 impl Context {
     /// Initializes a new vulkan context.
     /// Note: The selected GPU is guaranteed to support surface creation.
-    ///
-    /// # Errors
-    /// This function may fail for the following reasons:
-    ///
-    /// - No GPU that support both rendering and presentation was found
-    /// - The Vulkan loader library could not be found on the system path
-    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
-    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    /// - `VK_ERROR_INITIALIZATION_FAILED`
-    /// - `VK_ERROR_EXTENSION_NOT_PRESENT`
-    /// - `VK_ERROR_LAYER_NOT_PRESENT`
-    /// - `VK_ERROR_FEATURE_NOT_PRESENT`
-    /// - `VK_ERROR_TOO_MANY_OBJECTS`
-    /// - `VK_ERROR_DEVICE_LOST`
-    pub fn new(os_library: Library, use_validation: bool) -> Result<Self> {
+    pub fn new(os_library: Library, use_validation: bool) -> Result<Self, InitError> {
         let library = {
             let entry = EntryCustom::new_custom(os_library, |lib, name| {
                 lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
@@ -87,7 +100,7 @@ impl Context {
             if let Ok(e) = entry {
                 e
             } else {
-                return Err(VulkanError::LibraryNotVulkan);
+                return Err(InitError::DriverIncompatible);
             }
         };
 
@@ -100,11 +113,10 @@ impl Context {
 
         let instance = {
             let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
+            let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
 
             let mut layers = ArrayVec::<*const c_char, 1>::new();
             let mut extensions = ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
-
-            let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
 
             if use_validation {
                 layers.push(VALIDATION_LAYER_NAME);
@@ -116,21 +128,17 @@ impl Context {
                 .enabled_layer_names(layers.as_slice())
                 .enabled_extension_names(extensions.as_slice());
 
-            match unsafe { library.create_instance(&create_info, None) } {
-                Ok(instance) => instance,
-                Err(err) => match err {
-                    VkError(vk_error) => return Err(VulkanError::from(vk_error)),
-                    LoadError(_) => {
-                        unreachable!("Examination of ash's source shows this is never returned (July 31, 2021)")
-                    }
+            unsafe { library.create_instance(&create_info, None) }.map_err(|err| match err {
+                VkError(vk_error) => match vk_error {
+                    vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
+                    any => InitError::from(any),
                 },
-            }
+                LoadError(_) => unreachable!(),
+            })?
         };
 
         let debug = if use_validation {
-            let ut = DebugUtils::new(&library, &instance);
-            let cb = unsafe { ut.create_debug_utils_messenger(&debug_callback_create_info, None) }?;
-            Some(VulkanDebug { api: ut, callback: cb })
+            Some(VulkanDebug::new(&library, &instance, &debug_callback_create_info))
         } else {
             None
         };
@@ -138,7 +146,11 @@ impl Context {
         let surface_api = Surface::new(&library, &instance);
         let os_surface_api = Win32Surface::new(&library, &instance);
 
-        let gpu = select_physical_device(&instance, &os_surface_api)?;
+        let gpu = if let Some(gpu) = select_physical_device(&instance, &os_surface_api) {
+            gpu
+        } else {
+            return Err(InitError::NoGpu);
+        };
 
         let device = {
             let priorities = [1.0];
@@ -158,7 +170,6 @@ impl Context {
             }
 
             let features: vk::PhysicalDeviceFeatures = unsafe { std::mem::zeroed() };
-
             let extensions = ArrayVec::<_, 1>::from_iter([SWAPCHAIN_EXTENSION_NAME]);
 
             let create_info = vk::DeviceCreateInfo::builder()
@@ -166,7 +177,16 @@ impl Context {
                 .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
-            unsafe { instance.create_device(gpu.handle, &create_info, None) }?
+            match unsafe { instance.create_device(gpu.handle, &create_info, None) } {
+                Ok(device) => device,
+                Err(vk_result) => {
+                    return Err(match vk_result {
+                        vk::Result::ERROR_TOO_MANY_OBJECTS => InitError::InitMoreThanOnce,
+                        vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
+                        any => InitError::from(any),
+                    })
+                }
+            }
         };
 
         let swapchain_api = Swapchain::new(&instance, &device);
@@ -176,29 +196,8 @@ impl Context {
 
         let pipeline_cache = {
             let create_info = vk::PipelineCacheCreateInfo::builder();
+            // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
             unsafe { device.create_pipeline_cache(&create_info, None) }?
-        };
-
-        let fence_pool = {
-            let mut pool = ArrayVec::new();
-
-            for _ in 0..SYNC_POOL_SIZE {
-                let ci = vk::FenceCreateInfo::builder();
-                pool.push(unsafe { device.create_fence(&ci, None) }?);
-            }
-
-            pool
-        };
-
-        let semaphore_pool = {
-            let mut pool = ArrayVec::new();
-
-            for _ in 0..SYNC_POOL_SIZE {
-                let ci = vk::SemaphoreCreateInfo::builder();
-                pool.push(unsafe { device.create_semaphore(&ci, None) }?);
-            }
-
-            pool
         };
 
         Ok(Self {
@@ -212,8 +211,8 @@ impl Context {
             os_surface_api,
             swapchain_api,
             pipeline_cache,
-            fence_pool,
-            semaphore_pool,
+            fence_pool: ArrayVec::new(),
+            semaphore_pool: ArrayVec::new(),
             debug,
         })
     }
@@ -221,20 +220,22 @@ impl Context {
     /// Fetches a fence from the context's pool, or creates a new one. If the
     /// fence needs to be signalled, a new one will be created.
     ///
-    /// # Errors
-    /// This function may fail for the following reasons:
-    ///
-    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
-    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    pub fn get_or_create_fence(&mut self, signalled: bool) -> Result<vk::Fence> {
-        if signalled {
-            let ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-            Ok(unsafe { self.device.create_fence(&ci, None) }?)
-        } else if let Some(fence) = self.fence_pool.pop() {
-            Ok(fence)
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn get_or_create_fence(&mut self, signalled: bool) -> vk::Fence {
+        if !self.fence_pool.is_empty() && !signalled {
+            self.fence_pool.pop().unwrap()
         } else {
-            let ci = vk::FenceCreateInfo::builder();
-            Ok(unsafe { self.device.create_fence(&ci, None) }?)
+            let ci = vk::FenceCreateInfo {
+                flags: if signalled {
+                    vk::FenceCreateFlags::SIGNALED
+                } else {
+                    vk::FenceCreateFlags::empty()
+                },
+                ..Default::default()
+            };
+
+            unsafe { self.device.create_fence(&ci, None).unwrap() }
         }
     }
 
@@ -254,18 +255,13 @@ impl Context {
 
     /// Fetches a semaphore from the context's pool, or creates a new one.
     ///
-    /// # Errors
-    /// This function may fail for the following reasons:
-    ///
-    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
-    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    pub fn get_or_create_semaphore(&mut self) -> Result<vk::Semaphore> {
-        if let Some(semaphore) = self.semaphore_pool.pop() {
-            Ok(semaphore)
-        } else {
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn get_or_create_semaphore(&mut self) -> vk::Semaphore {
+        self.semaphore_pool.pop().unwrap_or_else(|| {
             let ci = vk::SemaphoreCreateInfo::builder();
-            Ok(unsafe { self.device.create_semaphore(&ci, None) }?)
-        }
+            unsafe { self.device.create_semaphore(&ci, None) }.unwrap()
+        })
     }
 
     /// Returns a semaphore to the context's pool, or destroys it if the
@@ -280,14 +276,20 @@ impl Context {
         }
     }
 
-    pub fn create_shader(&mut self, source: &[u8]) -> Result<vk::ShaderModule> {
-        if source.len() % 4 == 0 {
+    /// Creates a new shader from SPIR-V source. Note that the source must be
+    /// 4-byte aligned to be accepted as valid.
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn create_shader(&mut self, source: &[u8]) -> vk::ShaderModule {
+        if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
             let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
             let ci = vk::ShaderModuleCreateInfo::builder().code(words);
 
-            Ok(unsafe { self.device.create_shader_module(&ci, None) }?)
+            // Only fails on out of memory, or unused extension errors (Vulkan
+            // 1.2; Aug 7, 2021)
+            unsafe { self.device.create_shader_module(&ci, None) }.expect("Out of memory")
         } else {
-            Err(VulkanError::InvalidSpirV)
+            panic!("Shader source must be aligned to 4-byte words")
         }
     }
 
@@ -297,34 +299,48 @@ impl Context {
         }
     }
 
-    pub fn create_graphics_pipeline(&mut self, create_info: &vk::GraphicsPipelineCreateInfo) -> Result<vk::Pipeline> {
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn create_pipeline_layout(&mut self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
+        unsafe { self.device.create_pipeline_layout(create_info, None) }.unwrap()
+    }
+
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn create_graphics_pipeline(&mut self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
         let mut pipeline = vk::Pipeline::default();
 
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
         unsafe {
             self.device
                 .fp_v1_0()
                 .create_graphics_pipelines(
                     self.device.handle(),
-                    self.pipeline_cache,
+                    vk::PipelineCache::null(),
                     1,
                     create_info,
                     std::ptr::null(),
                     &mut pipeline,
                 )
-                .result()?;
+                .result()
+                .unwrap();
         }
 
-        Ok(pipeline)
+        pipeline
     }
 
-    pub fn create_graphics_command_pool(&mut self, transient: bool) -> Result<vk::CommandPool> {
+    /// # Panics
+    /// Panics on out of memory conditions
+    pub fn create_graphics_command_pool(&mut self, transient: bool) -> vk::CommandPool {
         let mut create_info = vk::CommandPoolCreateInfo::builder().queue_family_index(self.gpu.graphics_queue_index);
 
         if transient {
             create_info = create_info.flags(vk::CommandPoolCreateFlags::TRANSIENT);
         }
 
-        Ok(unsafe { self.device.create_command_pool(&create_info, None) }?)
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
+        unsafe { self.device.create_command_pool(&create_info, None) }.unwrap()
     }
 }
 
@@ -334,13 +350,8 @@ impl Drop for Context {
             // We're shutting down, so ignore errors
             let _ = self.device.device_wait_idle();
 
-            for fence in &self.fence_pool {
-                self.device.destroy_fence(*fence, None);
-            }
-
-            for semaphore in &self.semaphore_pool {
-                self.device.destroy_semaphore(*semaphore, None);
-            }
+            std::mem::take(&mut self.fence_pool).empty(|fence| self.device.destroy_fence(fence, None));
+            std::mem::take(&mut self.semaphore_pool).empty(|sem| self.device.destroy_semaphore(sem, None));
 
             if let Some(debug) = self.debug.as_ref() {
                 debug.api.destroy_debug_utils_messenger(debug.callback, None);
@@ -355,12 +366,12 @@ impl Drop for Context {
 }
 
 unsafe extern "system" fn debug_callback(
-    _severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _message_type: vk::DebugUtilsMessageTypeFlagsEXT,
     callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _user_data: *mut c_void,
 ) -> vk::Bool32 {
-    if _severity < vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+    if severity < vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
         return vk::FALSE;
     }
 
@@ -375,19 +386,22 @@ pub(crate) struct Gpu {
     pub present_queue_index: u32,
 }
 
-/// # Errors
-/// This function may fail for the following reasons:
-///
-/// - No GPU that supports both rendering and presentation could be found.
-/// - `VK_ERROR_OUT_OF_HOST_MEMORY`
-/// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-/// - `VK_ERROR_INITIALIZATION_FAILED`
-fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Result<Gpu> {
+fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Option<Gpu> {
     let physical_devices = load_vk_objects::<_, _, MAX_PHYSICAL_DEVICES>(|count, ptr| unsafe {
         instance
             .fp_v1_0()
             .enumerate_physical_devices(instance.handle(), count, ptr)
-    })?;
+    });
+
+    let physical_devices = if let Ok(devices) = physical_devices {
+        if devices.is_empty() {
+            return None;
+        } else {
+            devices
+        }
+    } else {
+        return None;
+    };
 
     for physical_device in &physical_devices {
         let queue_families = load_vk_objects::<_, _, MAX_QUEUE_FAMILIES>(|count, ptr| {
@@ -396,7 +410,6 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
                     .fp_v1_0()
                     .get_physical_device_queue_family_properties(*physical_device, count, ptr);
             }
-
             vk::Result::SUCCESS
         })
         // Always passes because we always return VkSuccess
@@ -419,7 +432,7 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
             }
 
             if let Some((graphics_i, present_i)) = graphics.zip(present) {
-                return Ok(Gpu {
+                return Some(Gpu {
                     handle: *physical_device,
                     graphics_queue_index: graphics_i.try_into().unwrap(),
                     present_queue_index: present_i.try_into().unwrap(),
@@ -428,21 +441,19 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Re
         }
     }
 
-    Err(VulkanError::NoSuitableGpu)
+    None
 }
 
-pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> Result<ArrayVec<T, COUNT>>
+pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> Result<ArrayVec<T, COUNT>, vk::Result>
 where
     F: FnMut(*mut u32, *mut T) -> vk::Result,
 {
     let mut count = 0;
-
     func(&mut count, std::ptr::null_mut()).result()?;
-
     let mut buffer = ArrayVec::new();
     count = min(count, buffer.capacity().try_into().unwrap());
-
     func(&mut count, buffer.as_mut_ptr()).result()?;
+
     unsafe {
         buffer.set_len(count as usize);
     }
