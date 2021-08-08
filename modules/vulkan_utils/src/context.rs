@@ -216,6 +216,7 @@ impl Context {
     ///
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn get_or_create_fence(&mut self, signalled: bool) -> vk::Fence {
         if !self.fence_pool.is_empty() && !signalled {
             self.fence_pool.pop().unwrap()
@@ -247,6 +248,8 @@ impl Context {
         }
     }
 
+    /// `true` of success, `false` for time out
+    #[must_use]
     pub fn wait_for_fences(&self, fences: &[vk::Fence], timeout: u64) -> bool {
         let r = unsafe {
             self.device.fp_v1_0().wait_for_fences(
@@ -275,6 +278,7 @@ impl Context {
     ///
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn get_or_create_semaphore(&mut self) -> vk::Semaphore {
         self.semaphore_pool.pop().unwrap_or_else(|| {
             let ci = vk::SemaphoreCreateInfo::builder();
@@ -298,6 +302,7 @@ impl Context {
     /// 4-byte aligned to be accepted as valid.
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn create_shader(&self, source: &[u8]) -> vk::ShaderModule {
         if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
             let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
@@ -319,6 +324,7 @@ impl Context {
 
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
         unsafe { self.device.create_pipeline_layout(create_info, None) }.expect("Out of memory")
@@ -326,6 +332,7 @@ impl Context {
 
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn create_graphics_pipeline(&self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
         let mut pipeline = vk::Pipeline::default();
 
@@ -350,6 +357,7 @@ impl Context {
 
     /// # Panics
     /// Panics on out of memory conditions
+    #[must_use]
     pub fn create_graphics_command_pool(&self, transient: bool) -> vk::CommandPool {
         let mut create_info = vk::CommandPoolCreateInfo::builder().queue_family_index(self.gpu.graphics_queue_index);
 
@@ -373,7 +381,7 @@ impl Context {
                 self.device.handle(),
                 &alloc_info,
                 buffers.as_mut_ptr()
-            ).result().expect("Out of memory")
+            ).result().expect("Out of memory");
         }
     }
 
@@ -388,7 +396,7 @@ impl Context {
                         vk::CommandPoolResetFlags::empty()
                     },
                 )
-                .expect("Out of memory")
+                .expect("Out of memory");
         }
     }
 
@@ -398,10 +406,12 @@ impl Context {
         }
     }
 
+    #[must_use]
     pub fn create_framebuffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
         unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
     }
 
+    #[must_use]
     pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
         unsafe { self.device.create_render_pass(create_info, None) }.expect("Out of memory")
     }
@@ -459,9 +469,8 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Op
     let physical_devices = if let Ok(devices) = physical_devices {
         if devices.is_empty() {
             return None;
-        } else {
-            devices
         }
+        devices
     } else {
         return None;
     };

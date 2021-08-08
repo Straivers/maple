@@ -269,7 +269,7 @@ fn create_swapchain(
         any => panic!("Unexpected error: {:?}", any),
     })?;
 
-    get_swapchain_images(context, handle, format.format, &mut image_buffer)?;
+    get_swapchain_images(context, handle, format.format, &mut image_buffer);
 
     Ok(Swapchain {
         format: create_info.image_format,
@@ -288,7 +288,7 @@ fn get_swapchain_images(
     swapchain: vk::SwapchainKHR,
     format: vk::Format,
     buffer: &mut Vec<SwapchainImage>,
-) -> Result<(), Error> {
+) {
     let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
         context
             .swapchain_api
@@ -328,6 +328,4 @@ fn get_swapchain_images(
 
         buffer.push(SwapchainImage { image: *image, view });
     }
-
-    Ok(())
 }
