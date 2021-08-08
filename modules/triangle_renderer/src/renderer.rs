@@ -97,6 +97,11 @@ impl TriangleRenderer {
 
     pub fn render_to(&mut self, swapchain: &mut Swapchain) -> Result<()> {
         let frame = swapchain.frame_in_flight()?;
+
+        if frame.extent == vk::Extent2D::default() {
+            return Ok(())
+        }
+
         self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);
 
         let image_index = if let Ok(Some(index)) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore)
