@@ -102,7 +102,12 @@ impl TriangleRenderer {
             return Ok(())
         }
 
-        self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);
+        if frame.was_resized {
+            self.resize_swapchain(swapchain)?;
+            return Ok(());
+        }
+
+        let _ = self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);
 
         let image_index = if let Ok(Some(index)) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore)
         {
@@ -182,7 +187,7 @@ impl TriangleRenderer {
             height: framebuffer_size.height.into(),
         };
 
-        self.vulkan.wait_for_fences(&swapchain.sync_fence, u64::MAX);
+        let _ = self.vulkan.wait_for_fences(&swapchain.sync_fence, u64::MAX);
 
         for pool in &swapchain.command_pools {
             self.vulkan.reset_command_pool(*pool, false);
