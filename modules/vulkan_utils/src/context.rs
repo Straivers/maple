@@ -38,16 +38,10 @@ const SWAPCHAIN_EXTENSION_NAME: *const c_char = "VK_KHR_swapchain\0".as_ptr().ca
 pub enum InitError {
     #[error("No compatible GPU was found")]
     NoGpu,
-    #[error("The driver crashed")]
-    DriverLost,
     #[error("The driver does not support Vulkan 1.2")]
     DriverIncompatible,
-    #[error("The driver failed for an implementation defined reason")]
-    UnknownReason,
     #[error("The application attempted to create more than one context. Only applies in certain OSes")]
     InitMoreThanOnce,
-    #[error(transparent)]
-    Unexpected(#[from] vk::Result),
 }
 
 pub struct VulkanDebug {
@@ -131,7 +125,7 @@ impl Context {
             unsafe { library.create_instance(&create_info, None) }.map_err(|err| match err {
                 VkError(vk_error) => match vk_error {
                     vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
-                    any => InitError::from(any),
+                    any => panic!("Unexpected error: {:?}", any),
                 },
                 LoadError(_) => unreachable!(),
             })?
@@ -183,7 +177,7 @@ impl Context {
                     return Err(match vk_result {
                         vk::Result::ERROR_TOO_MANY_OBJECTS => InitError::InitMoreThanOnce,
                         vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
-                        any => InitError::from(any),
+                        any => panic!("Unexpected error {:?}", any),
                     })
                 }
             }
@@ -197,7 +191,7 @@ impl Context {
         let pipeline_cache = {
             let create_info = vk::PipelineCacheCreateInfo::builder();
             // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-            unsafe { device.create_pipeline_cache(&create_info, None) }?
+            unsafe { device.create_pipeline_cache(&create_info, None) }.expect("Out of memory")
         };
 
         Ok(Self {
@@ -235,7 +229,7 @@ impl Context {
                 ..Default::default()
             };
 
-            unsafe { self.device.create_fence(&ci, None).unwrap() }
+            unsafe { self.device.create_fence(&ci, None).expect("Out of memory") }
         }
     }
 
@@ -253,6 +247,30 @@ impl Context {
         }
     }
 
+    pub fn wait_for_fences(&self, fences: &[vk::Fence], timeout: u64) -> bool {
+        let r = unsafe {
+            self.device.fp_v1_0().wait_for_fences(
+                self.device.handle(),
+                fences.len() as u32,
+                fences.as_ptr(),
+                vk::TRUE,
+                timeout,
+            )
+        };
+
+        match r {
+            vk::Result::SUCCESS => true,
+            vk::Result::TIMEOUT => false,
+            any => panic!("Unexpected error: {:?}", any),
+        }
+    }
+
+    pub fn reset_fences(&self, fences: &[vk::Fence]) {
+        unsafe {
+            self.device.reset_fences(fences).expect("Out of memory");
+        }
+    }
+
     /// Fetches a semaphore from the context's pool, or creates a new one.
     ///
     /// # Panics
@@ -260,7 +278,7 @@ impl Context {
     pub fn get_or_create_semaphore(&mut self) -> vk::Semaphore {
         self.semaphore_pool.pop().unwrap_or_else(|| {
             let ci = vk::SemaphoreCreateInfo::builder();
-            unsafe { self.device.create_semaphore(&ci, None) }.unwrap()
+            unsafe { self.device.create_semaphore(&ci, None) }.expect("Out of memory")
         })
     }
 
@@ -280,7 +298,7 @@ impl Context {
     /// 4-byte aligned to be accepted as valid.
     /// # Panics
     /// Panics on out of memory conditions
-    pub fn create_shader(&mut self, source: &[u8]) -> vk::ShaderModule {
+    pub fn create_shader(&self, source: &[u8]) -> vk::ShaderModule {
         if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
             let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
             let ci = vk::ShaderModuleCreateInfo::builder().code(words);
@@ -293,7 +311,7 @@ impl Context {
         }
     }
 
-    pub fn destroy_shader(&mut self, shader: vk::ShaderModule) {
+    pub fn destroy_shader(&self, shader: vk::ShaderModule) {
         unsafe {
             self.device.destroy_shader_module(shader, None);
         }
@@ -301,14 +319,14 @@ impl Context {
 
     /// # Panics
     /// Panics on out of memory conditions
-    pub fn create_pipeline_layout(&mut self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
+    pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe { self.device.create_pipeline_layout(create_info, None) }.unwrap()
+        unsafe { self.device.create_pipeline_layout(create_info, None) }.expect("Out of memory")
     }
 
     /// # Panics
     /// Panics on out of memory conditions
-    pub fn create_graphics_pipeline(&mut self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
+    pub fn create_graphics_pipeline(&self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
         let mut pipeline = vk::Pipeline::default();
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
@@ -324,7 +342,7 @@ impl Context {
                     &mut pipeline,
                 )
                 .result()
-                .unwrap();
+                .expect("Out of memory");
         }
 
         pipeline
@@ -332,7 +350,7 @@ impl Context {
 
     /// # Panics
     /// Panics on out of memory conditions
-    pub fn create_graphics_command_pool(&mut self, transient: bool) -> vk::CommandPool {
+    pub fn create_graphics_command_pool(&self, transient: bool) -> vk::CommandPool {
         let mut create_info = vk::CommandPoolCreateInfo::builder().queue_family_index(self.gpu.graphics_queue_index);
 
         if transient {
@@ -340,7 +358,52 @@ impl Context {
         }
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe { self.device.create_command_pool(&create_info, None) }.unwrap()
+        unsafe { self.device.create_command_pool(&create_info, None) }.expect("Out of memory")
+    }
+
+    pub fn allocate_command_buffers(&self, pool: vk::CommandPool, buffers: &mut [vk::CommandBuffer]) {
+        let alloc_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(buffers.len() as u32)
+            .build();
+        
+        unsafe {
+            self.device.fp_v1_0().allocate_command_buffers(
+                self.device.handle(),
+                &alloc_info,
+                buffers.as_mut_ptr()
+            ).result().expect("Out of memory")
+        }
+    }
+
+    pub fn reset_command_pool(&self, pool: vk::CommandPool, release_memory: bool) {
+        unsafe {
+            self.device
+                .reset_command_pool(
+                    pool,
+                    if release_memory {
+                        vk::CommandPoolResetFlags::RELEASE_RESOURCES
+                    } else {
+                        vk::CommandPoolResetFlags::empty()
+                    },
+                )
+                .expect("Out of memory")
+        }
+    }
+
+    pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {
+        unsafe {
+            self.device.queue_submit(self.graphics_queue, submits, fence).expect("Unexpected error");
+        }
+    }
+
+    pub fn create_framebuffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
+        unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
+    }
+
+    pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
+        unsafe { self.device.create_render_pass(create_info, None) }.expect("Out of memory")
     }
 }
 

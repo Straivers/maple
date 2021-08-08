@@ -195,7 +195,7 @@ fn create_renderpass(context: &Context, format: vk::Format) -> Result<vk::Render
         .subpasses(&subpasses)
         .dependencies(&dependencies);
 
-    Ok(unsafe { context.device.create_render_pass(&create_info, None)? })
+    Ok(context.create_render_pass(&create_info))
 }
 
 fn create_pipeline(

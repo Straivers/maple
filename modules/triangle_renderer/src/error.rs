@@ -1,5 +1,3 @@
-use ash::vk;
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
@@ -25,15 +23,8 @@ impl From<crate::effect::EffectError> for Error {
 }
 
 #[doc(hidden)]
-impl From<vulkan_utils::Error> for Error {
-    fn from(vkr: vulkan_utils::Error) -> Self {
-        Error::InternalError(Box::new(vkr))
-    }
-}
-
-#[doc(hidden)]
-impl From<vk::Result> for Error {
-    fn from(vkr: vk::Result) -> Self {
-        Error::InternalError(Box::new(vulkan_utils::Error::from(vkr)))
+impl From<vulkan_utils::SwapchainError> for Error {
+    fn from(swe: vulkan_utils::SwapchainError) -> Self {
+        Error::InternalError(Box::new(swe))
     }
 }

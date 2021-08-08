@@ -1,11 +1,20 @@
 use super::context::{load_vk_objects, Context};
-use super::error::{Error, Result};
 use sys::window::WindowRef;
 
 use ash::vk;
+use thiserror::Error;
 
-/// Triple buffering
 const MAX_SWAPCHAIN_IMAGES: usize = 32;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("The window is in use by another swapchain or by another API")]
+    WindowInUse,
+    #[error("The window cannot be presented to with a swapchain")]
+    WindowNotSupported,
+    #[error("The swapchain could not be resized")]
+    ResizeFailed,
+}
 
 #[derive(Debug, Default)]
 pub struct SwapchainImage {
@@ -33,6 +42,8 @@ pub struct Swapchain {
 
     /// The images used by the swapchain.
     pub images: Vec<SwapchainImage>,
+
+    image_index: Option<u32>,
 }
 
 impl Swapchain {
@@ -58,7 +69,7 @@ impl Swapchain {
     /// tested for surface support through platform-specific methods (e.g. the
     /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
     /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(context: &mut Context, window: &WindowRef, preferred_num_images: u32) -> Result<Self> {
+    pub fn new(context: &mut Context, window: &WindowRef, preferred_num_images: u32) -> Result<Self, Error> {
         let surface = create_surface(context, window)?;
 
         // We test with platform-specific APIs during surface creation
@@ -68,15 +79,15 @@ impl Swapchain {
                 context.gpu.present_queue_index,
                 surface,
             )
-        }?);
+        }
+        .unwrap_or(false));
 
-        let size = if let Some(s) = window.framebuffer_size() {
-            vk::Extent2D {
-                width: u32::from(s.width),
-                height: u32::from(s.height),
-            }
-        } else {
-            return Err(Error::NativeWindowInUse);
+        let size = match window.framebuffer_size() {
+            Some(size) => vk::Extent2D {
+                width: u32::from(size.width),
+                height: u32::from(size.height),
+            },
+            None => panic!("Window lost unexpectedly"),
         };
 
         let image_buffer = Vec::with_capacity(preferred_num_images as usize);
@@ -94,15 +105,47 @@ impl Swapchain {
         }
     }
 
-    pub fn get_image(&self, context: &Context, acquire_semaphore: vk::Semaphore) -> Result<(u32, bool)> {
-        Ok(unsafe {
+    pub fn get_image(&mut self, context: &Context, acquire_semaphore: vk::Semaphore) -> Result<Option<u32>, Error> {
+        match unsafe {
             context
                 .swapchain_api
                 .acquire_next_image(self.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
-        }?)
+        } {
+            Ok((index, _)) => {
+                self.image_index = Some(index);
+                Ok(self.image_index)
+            }
+            Err(vkr) => match vkr {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => Ok(None),
+                any => panic!("Unexpected error {:?}", any),
+            },
+        }
     }
 
-    pub fn resize(&mut self, context: &Context, extent: vk::Extent2D) -> Result<()> {
+    pub fn present(&mut self, context: &Context, wait_semaphores: &[vk::Semaphore]) -> bool {
+        let swapchains = [self.handle];
+        let indices = [self.image_index.expect("Did not acquire image before presenting")];
+        self.image_index = None;
+
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(wait_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&indices);
+        
+        match unsafe {
+            context.swapchain_api.queue_present(context.graphics_queue, &present_info)
+        } {
+            Ok(update) => update,
+            Err(err) => if err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                true
+            }
+            else {
+                panic!("Unexpected error: {:?}", err)
+            }
+        }
+    }
+
+    pub fn resize(&mut self, context: &Context, extent: vk::Extent2D) -> Result<(), Error> {
         for image in &self.images {
             unsafe {
                 context.device.destroy_image_view(image.view, None);
@@ -128,15 +171,13 @@ impl Swapchain {
 }
 
 #[cfg(target_os = "windows")]
-fn create_surface(context: &Context, window: &WindowRef) -> Result<vk::SurfaceKHR> {
-    if let Some(handle) = window.handle() {
+fn create_surface(context: &Context, window: &WindowRef) -> Result<vk::SurfaceKHR, Error> {
+    window.handle().map_or(Err(Error::WindowInUse), |handle| {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
             .hwnd(handle.hwnd)
             .hinstance(handle.hinstance);
-        Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }?)
-    } else {
-        Err(Error::NativeWindowInUse)
-    }
+        Ok(unsafe { context.os_surface_api.create_win32_surface(&ci, None) }.expect("Unexpected error"))
+    })
 }
 
 fn create_swapchain(
@@ -145,11 +186,12 @@ fn create_swapchain(
     surface: vk::SurfaceKHR,
     mut image_buffer: Vec<SwapchainImage>,
     old_swapchain: Option<vk::SwapchainKHR>,
-) -> Result<Swapchain> {
+) -> Result<Swapchain, Error> {
     let capabilities = unsafe {
         context
             .surface_api
-            .get_physical_device_surface_capabilities(context.gpu.handle, surface)?
+            .get_physical_device_surface_capabilities(context.gpu.handle, surface)
+            .map_err(|err| panic!("Unexpected error: {:?}", err))?
     };
 
     let format = {
@@ -158,7 +200,8 @@ fn create_swapchain(
                 .surface_api
                 .fp()
                 .get_physical_device_surface_formats_khr(context.gpu.handle, surface, count, ptr)
-        })?;
+        })
+        .map_err(|err| panic!("Unexpected error: {:?}", err))?;
 
         *formats
             .iter()
@@ -171,7 +214,8 @@ fn create_swapchain(
             .surface_api
             .fp()
             .get_physical_device_surface_present_modes_khr(context.gpu.handle, surface, count, ptr)
-    })?
+    })
+    .map_err(|err| panic!("Unexpected error: {:?}", err))?
     .iter()
     .find(|p| **p == vk::PresentModeKHR::MAILBOX)
     .unwrap_or(&vk::PresentModeKHR::FIFO);
@@ -220,7 +264,10 @@ fn create_swapchain(
         create_info.old_swapchain = old;
     }
 
-    let handle = unsafe { context.swapchain_api.create_swapchain(&create_info, None) }?;
+    let handle = unsafe { context.swapchain_api.create_swapchain(&create_info, None) }.map_err(|err| match err {
+        vk::Result::ERROR_NATIVE_WINDOW_IN_USE_KHR => Error::WindowInUse,
+        any => panic!("Unexpected error: {:?}", any),
+    })?;
 
     get_swapchain_images(context, handle, format.format, &mut image_buffer)?;
 
@@ -232,6 +279,7 @@ fn create_swapchain(
         handle,
         image_size: create_info.image_extent,
         images: image_buffer,
+        image_index: None
     })
 }
 
@@ -240,13 +288,14 @@ fn get_swapchain_images(
     swapchain: vk::SwapchainKHR,
     format: vk::Format,
     buffer: &mut Vec<SwapchainImage>,
-) -> Result<()> {
+) -> Result<(), Error> {
     let images = load_vk_objects::<_, _, MAX_SWAPCHAIN_IMAGES>(|count, ptr| unsafe {
         context
             .swapchain_api
             .fp()
             .get_swapchain_images_khr(context.device.handle(), swapchain, count, ptr)
-    })?;
+    })
+    .expect("Unexpected error");
 
     for slot in buffer.iter_mut() {
         assert_ne!(slot.view, vk::ImageView::default());
@@ -274,7 +323,7 @@ fn get_swapchain_images(
     for image in &images {
         let view = {
             view_create_info.image = *image;
-            unsafe { context.device.create_image_view(&view_create_info, None) }?
+            unsafe { context.device.create_image_view(&view_create_info, None) }.expect("Out of memory")
         };
 
         buffer.push(SwapchainImage { image: *image, view });
