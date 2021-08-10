@@ -64,7 +64,7 @@ impl AppState {
 
     fn create_window(&mut self, title: &str) {
         let window = sys::window::Window::new(&self.event_loop, title);
-        let swapchain = Box::new(self.renderer.create_swapchain(window.get()).unwrap());
+        let swapchain = Box::new(self.renderer.create_swapchain(window.get()));
         self.windows.push(AppWindow { window, swapchain });
     }
 }
@@ -96,7 +96,7 @@ fn run(cli_options: &CliOptions) {
         }
 
         for window in &mut app_state.windows {
-            app_state.renderer.render_to(&mut window.swapchain).unwrap();
+            app_state.renderer.render_to(&mut window.swapchain);
         }
 
         app_state.renderer.end_frame();

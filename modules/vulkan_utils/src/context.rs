@@ -112,10 +112,14 @@ impl Context {
             let mut layers = ArrayVec::<*const c_char, 1>::new();
             let mut extensions = ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
 
+            let enables = [vk::ValidationFeatureEnableEXT::BEST_PRACTICES];
+            let mut validation_features = vk::ValidationFeaturesEXT::builder().enabled_validation_features(&enables);
+
             if use_validation {
                 layers.push(VALIDATION_LAYER_NAME);
                 extensions.push(DEBUG_UTILS_EXTENSION_NAME);
                 create_info = create_info.push_next(&mut debug_callback_create_info);
+                create_info = create_info.push_next(&mut validation_features);
             }
 
             create_info = create_info
@@ -375,13 +379,13 @@ impl Context {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(buffers.len() as u32)
             .build();
-        
+
         unsafe {
-            self.device.fp_v1_0().allocate_command_buffers(
-                self.device.handle(),
-                &alloc_info,
-                buffers.as_mut_ptr()
-            ).result().expect("Out of memory");
+            self.device
+                .fp_v1_0()
+                .allocate_command_buffers(self.device.handle(), &alloc_info, buffers.as_mut_ptr())
+                .result()
+                .expect("Out of memory");
         }
     }
 
@@ -402,13 +406,32 @@ impl Context {
 
     pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {
         unsafe {
-            self.device.queue_submit(self.graphics_queue, submits, fence).expect("Unexpected error");
+            self.device
+                .queue_submit(self.graphics_queue, submits, fence)
+                .expect("Unexpected error");
+        }
+    }
+
+    #[must_use]
+    pub fn create_image_view(&self, create_info: &vk::ImageViewCreateInfo) -> vk::ImageView {
+        unsafe { self.device.create_image_view(create_info, None) }.expect("Out of memory")
+    }
+
+    pub fn destroy_image_view(&self, view: vk::ImageView) {
+        unsafe {
+            self.device.destroy_image_view(view, None);
         }
     }
 
     #[must_use]
     pub fn create_framebuffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
         unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
+    }
+
+    pub fn destroy_framebuffer(&self, image: vk::Framebuffer) {
+        unsafe {
+            self.device.destroy_framebuffer(image, None);
+        }
     }
 
     #[must_use]

@@ -1,9 +1,9 @@
 use ash::vk;
-use sys::library::Library;
+use sys::{dpi::PhysicalSize, library::Library};
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::TriangleEffectBase;
-use crate::error::{Error, Result};
+use crate::error::{Error};
 use crate::swapchain::Swapchain;
 
 pub struct TriangleRenderer {
@@ -12,40 +12,62 @@ pub struct TriangleRenderer {
 }
 
 impl TriangleRenderer {
-    pub fn new(vulkan_library: Library, debug_mode: bool) -> Result<Self> {
+    pub fn new(vulkan_library: Library, debug_mode: bool) -> Result<Self, Error> {
         let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode)?;
-        let effect_base = TriangleEffectBase::new(&mut vulkan)?;
+        let effect_base = TriangleEffectBase::new(&mut vulkan);
 
         Ok(Self { vulkan, effect_base })
     }
 
-    pub fn create_swapchain(&mut self, window: sys::window::WindowRef) -> Result<Swapchain> {
-        let swapchain = vulkan_utils::Swapchain::new(&mut self.vulkan, &window, (FRAMES_IN_FLIGHT + 1) as u32)?;
-        let effect = self.effect_base.get_effect(&mut self.vulkan, swapchain.format)?;
+    pub fn create_swapchain(&mut self, window: sys::window::WindowRef) -> Swapchain {
+        let surface = self.vulkan.create_surface(&window);
+        let swapchain = {
+            let extent = physical_size_to_extent(window.framebuffer_size().unwrap());
+            vulkan_utils::SwapchainData::new(&mut self.vulkan, surface, extent)
+        };
+        let effect = self.effect_base.get_effect(&mut self.vulkan, swapchain.format);
+
+        let image_views = {
+            let mut buffer = Vec::with_capacity(swapchain.images.len());
+            for image in &swapchain.images {
+                let view_create_info = vk::ImageViewCreateInfo::builder()
+                    .image(*image)
+                    .format(swapchain.format)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+                buffer.push(self.vulkan.create_image_view(&view_create_info));
+            }
+            buffer
+        };
 
         let framebuffers = {
-            let mut buffers = Vec::with_capacity(swapchain.images.len());
-            let image_size = window.framebuffer_size().unwrap();
-
-            for image in &swapchain.images {
-                let attachments = [image.view];
+            let mut buffer = Vec::with_capacity(swapchain.images.len());
+            for view in &image_views {
+                let attachments = [*view];
                 let create_info = vk::FramebufferCreateInfo::builder()
                     .render_pass(effect.render_pass)
                     .attachments(&attachments)
-                    .width(image_size.width.into())
-                    .height(image_size.height.into())
+                    .width(swapchain.image_size.width)
+                    .height(swapchain.image_size.height)
                     .layers(1);
-
-                buffers.push(self.vulkan.create_framebuffer(&create_info));
+                buffer.push(self.vulkan.create_framebuffer(&create_info));
             }
-            buffers
+            buffer
         };
 
-        Ok(Swapchain {
+        Swapchain {
             current_frame: 0,
+            surface,
             swapchain,
             window,
             presentation_effect: effect,
+            image_views,
             framebuffers,
             sync_acquire: [
                 self.vulkan.get_or_create_semaphore(),
@@ -63,7 +85,7 @@ impl TriangleRenderer {
                 self.vulkan.create_graphics_command_pool(true),
                 self.vulkan.create_graphics_command_pool(true),
             ],
-        })
+        }
     }
 
     pub fn destroy_swapchain(&mut self, swapchain: Swapchain) {
@@ -75,11 +97,17 @@ impl TriangleRenderer {
         }
 
         swapchain.swapchain.destroy(&mut self.vulkan);
-        unsafe {
-            for framebuffer in swapchain.framebuffers {
-                self.vulkan.device.destroy_framebuffer(framebuffer, None);
-            }
+        self.vulkan.destroy_surface(swapchain.surface);
 
+        for view in swapchain.image_views {
+            self.vulkan.destroy_image_view(view);
+        }
+
+        for framebuffer in swapchain.framebuffers {
+            self.vulkan.destroy_framebuffer(framebuffer);
+        }
+
+        unsafe {
             for i in 0..FRAMES_IN_FLIGHT {
                 self.vulkan
                     .device
@@ -95,26 +123,25 @@ impl TriangleRenderer {
         self.effect_base.cleanup(&mut self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut Swapchain) -> Result<()> {
-        let frame = swapchain.frame_in_flight()?;
+    pub fn render_to(&mut self, swapchain: &mut Swapchain) {
+        let frame = swapchain.frame_in_flight();
 
         if frame.extent == vk::Extent2D::default() {
-            return Ok(())
+            return;
         }
 
         if frame.was_resized {
-            self.resize_swapchain(swapchain)?;
-            return Ok(());
+            self.resize_swapchain(swapchain);
+            return;
         }
 
         let _ = self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);
 
-        let image_index = if let Ok(Some(index)) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore)
-        {
+        let image_index = if let Some(index) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore) {
             index
         } else {
-            self.resize_swapchain(swapchain)?;
-            return Ok(());
+            self.resize_swapchain(swapchain);
+            return;
         };
 
         let command_pool = swapchain.command_pools[swapchain.current_frame];
@@ -144,48 +171,38 @@ impl TriangleRenderer {
         );
 
         unsafe {
-            self.vulkan.device.end_command_buffer(command_buffer).expect("Out of memory");
+            self.vulkan
+                .device
+                .end_command_buffer(command_buffer)
+                .expect("Out of memory");
         }
 
         {
-            let wait = [frame.acquire_semaphore];
-            let signal = [frame.present_semaphore];
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let commands = [command_buffer];
-
-            let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&wait)
-                .wait_dst_stage_mask(&wait_stages)
-                .command_buffers(&commands)
-                .signal_semaphores(&signal)
-                .build();
+            let submit_info = vk::SubmitInfo {
+                s_type: vk::StructureType::SUBMIT_INFO,
+                p_next: std::ptr::null(),
+                wait_semaphore_count: 1,
+                p_wait_semaphores: &frame.acquire_semaphore,
+                p_wait_dst_stage_mask: &vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                signal_semaphore_count: 1,
+                p_signal_semaphores: &frame.present_semaphore,
+                command_buffer_count: 1,
+                p_command_buffers: &command_buffer,
+            };
 
             self.vulkan.reset_fences(&[frame.submit_fence]);
             self.vulkan.submit_to_graphics_queue(&[submit_info], frame.submit_fence);
         }
 
-        if {
-            let wait = [frame.present_semaphore];
-            swapchain.swapchain.present(&self.vulkan, &wait)
-        } {
-            self.resize_swapchain(swapchain)?;
+        if swapchain.swapchain.present(&self.vulkan, &[frame.present_semaphore]) {
+            self.resize_swapchain(swapchain);
         }
 
         swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
-        Ok(())
     }
 
-    fn resize_swapchain(&mut self, swapchain: &mut Swapchain) -> Result<()> {
-        let framebuffer_size = if let Some(size) = swapchain.window.framebuffer_size() {
-            size
-        } else {
-            return Err(Error::WindowNotValid);
-        };
-
-        let framebuffer_extent = vk::Extent2D {
-            width: framebuffer_size.width.into(),
-            height: framebuffer_size.height.into(),
-        };
+    fn resize_swapchain(&mut self, swapchain: &mut Swapchain) {
+        let framebuffer_extent = physical_size_to_extent(swapchain.window.framebuffer_size().unwrap());
 
         let _ = self.vulkan.wait_for_fences(&swapchain.sync_fence, u64::MAX);
 
@@ -193,41 +210,81 @@ impl TriangleRenderer {
             self.vulkan.reset_command_pool(*pool, false);
         }
 
-        let old_format = swapchain.swapchain.format;
-        swapchain.swapchain.resize(&self.vulkan, framebuffer_extent)?;
+        swapchain
+            .swapchain
+            .resize(&self.vulkan, swapchain.surface, framebuffer_extent);
 
-        if old_format != swapchain.swapchain.format {
-            swapchain.presentation_effect = self
-                .effect_base
-                .get_effect(&mut self.vulkan, swapchain.swapchain.format)?;
+        swapchain.presentation_effect = self
+            .effect_base
+            .get_effect(&mut self.vulkan, swapchain.swapchain.format);
+
+        assert!(swapchain.image_views.len() == swapchain.framebuffers.len());
+
+        for (view, buffer) in swapchain.image_views.iter().zip(swapchain.framebuffers.iter()) {
+            self.vulkan.destroy_image_view(*view);
+            self.vulkan.destroy_framebuffer(*buffer);
         }
 
-        for framebuffer in swapchain.framebuffers.drain(..) {
-            unsafe {
-                self.vulkan.device.destroy_framebuffer(framebuffer, None);
-            }
-        }
+        swapchain.image_views.clear();
+        swapchain.image_views.reserve(swapchain.swapchain.images.len());
+        swapchain.framebuffers.clear();
+        swapchain.framebuffers.reserve(swapchain.swapchain.images.len());
 
         for image in &swapchain.swapchain.images {
-            let attachments = [image.view];
-            let create_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(swapchain.presentation_effect.render_pass())
-                .attachments(&attachments)
-                .width(framebuffer_extent.width)
-                .height(framebuffer_extent.height)
-                .layers(1);
+            let view_create_info = vk::ImageViewCreateInfo {
+                s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
+                p_next: std::ptr::null(),
+                flags: vk::ImageViewCreateFlags::empty(),
+                image: *image,
+                format: swapchain.swapchain.format,
+                view_type: vk::ImageViewType::TYPE_2D,
+                components: vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::IDENTITY,
+                    g: vk::ComponentSwizzle::IDENTITY,
+                    b: vk::ComponentSwizzle::IDENTITY,
+                    a: vk::ComponentSwizzle::IDENTITY,
+                },
+                subresource_range: vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+            };
 
+            let view = self.vulkan.create_image_view(&view_create_info);
+
+            let attachments = [view];
+            let create_info = vk::FramebufferCreateInfo {
+                s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
+                p_next: std::ptr::null(),
+                flags: vk::FramebufferCreateFlags::empty(),
+                render_pass: swapchain.presentation_effect.render_pass(),
+                p_attachments: attachments.as_ptr(),
+                attachment_count: 1,
+                width: framebuffer_extent.width,
+                height: framebuffer_extent.height,
+                layers: 1,
+            };
+
+            swapchain.image_views.push(view);
             swapchain
                 .framebuffers
                 .push(self.vulkan.create_framebuffer(&create_info));
         }
-
-        Ok(())
     }
 }
 
 impl Drop for TriangleRenderer {
     fn drop(&mut self) {
         TriangleEffectBase::destroy(std::mem::take(&mut self.effect_base), &mut self.vulkan);
+    }
+}
+
+fn physical_size_to_extent(size: PhysicalSize) -> vk::Extent2D {
+    vk::Extent2D {
+        width: u32::from(size.width),
+        height: u32::from(size.height),
     }
 }

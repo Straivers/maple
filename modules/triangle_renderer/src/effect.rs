@@ -1,7 +1,6 @@
 use std::{collections::HashMap, ffi::CStr, rc::Rc};
 
 use crate::constants::{TRIANGLE_FRAGMENT_SHADER, TRIANGLE_VERTEX_SHADER};
-use crate::error::Result;
 use ash::vk;
 use vulkan_utils::Context;
 
@@ -24,7 +23,7 @@ pub struct TriangleEffectBase {
 }
 
 impl TriangleEffectBase {
-    pub fn new(context: &mut Context) -> std::result::Result<Self, EffectError> {
+    pub fn new(context: &mut Context) -> Self {
         let vertex_shader = context.create_shader(TRIANGLE_VERTEX_SHADER);
         let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER);
 
@@ -33,12 +32,12 @@ impl TriangleEffectBase {
             context.create_pipeline_layout(&create_info)
         };
 
-        Ok(Self {
+        Self {
             vertex_shader,
             fragment_shader,
             pipeline_layout,
             effects: HashMap::new(),
-        })
+        }
     }
 
     pub fn destroy(mut this: TriangleEffectBase, context: &mut Context) {
@@ -55,15 +54,15 @@ impl TriangleEffectBase {
         }
     }
 
-    pub fn get_effect(&mut self, context: &mut Context, output_format: vk::Format) -> Result<Rc<TriangleEffect>> {
+    pub fn get_effect(&mut self, context: &mut Context, output_format: vk::Format) -> Rc<TriangleEffect> {
         if let Some(effect) = self.effects.get(&output_format) {
-            Ok(effect.clone())
+            effect.clone()
         } else {
-            let effect = Rc::new(TriangleEffect::new(self, context, output_format)?);
+            let effect = Rc::new(TriangleEffect::new(self, context, output_format));
 
             self.effects.insert(output_format, effect.clone());
 
-            Ok(effect)
+            effect
         }
     }
 
@@ -88,8 +87,8 @@ pub struct TriangleEffect {
 }
 
 impl TriangleEffect {
-    pub fn new(base: &TriangleEffectBase, context: &mut Context, output_format: vk::Format) -> Result<Self> {
-        let render_pass = create_renderpass(context, output_format)?;
+    pub fn new(base: &TriangleEffectBase, context: &mut Context, output_format: vk::Format) -> Self {
+        let render_pass = create_renderpass(context, output_format);
         let pipeline = create_pipeline(
             context,
             base.vertex_shader,
@@ -98,11 +97,11 @@ impl TriangleEffect {
             base.pipeline_layout,
         );
 
-        Ok(Self {
+        Self {
             format: output_format,
             render_pass,
             pipeline,
-        })
+        }
     }
 }
 
@@ -159,7 +158,7 @@ impl Effect for TriangleEffect {
     }
 }
 
-fn create_renderpass(context: &Context, format: vk::Format) -> Result<vk::RenderPass> {
+fn create_renderpass(context: &Context, format: vk::Format) -> vk::RenderPass {
     let attachments = [vk::AttachmentDescription::builder()
         .format(format)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -195,7 +194,7 @@ fn create_renderpass(context: &Context, format: vk::Format) -> Result<vk::Render
         .subpasses(&subpasses)
         .dependencies(&dependencies);
 
-    Ok(context.create_render_pass(&create_info))
+    context.create_render_pass(&create_info)
 }
 
 fn create_pipeline(
