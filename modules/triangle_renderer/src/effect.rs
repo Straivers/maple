@@ -14,6 +14,10 @@ pub trait Effect {
     fn apply(&self, context: &Context, target: vk::Framebuffer, target_rect: vk::Rect2D, cmd: vk::CommandBuffer);
 }
 
+pub trait EffectBase {
+    fn get_effect(&mut self, context: &Context, format: vk::Format) -> Rc<dyn Effect>;
+}
+
 #[derive(Default)]
 pub struct TriangleEffectBase {
     vertex_shader: vk::ShaderModule,
@@ -54,18 +58,7 @@ impl TriangleEffectBase {
         }
     }
 
-    pub fn get_effect(&mut self, context: &mut Context, output_format: vk::Format) -> Rc<TriangleEffect> {
-        if let Some(effect) = self.effects.get(&output_format) {
-            effect.clone()
-        } else {
-            let effect = Rc::new(TriangleEffect::new(self, context, output_format));
-
-            self.effects.insert(output_format, effect.clone());
-
-            effect
-        }
-    }
-
+    
     pub fn cleanup(&mut self, context: &mut Context) {
         self.effects.retain(|_, effect| {
             let keep = Rc::strong_count(effect) > 1;
@@ -80,6 +73,20 @@ impl TriangleEffectBase {
     }
 }
 
+impl EffectBase for TriangleEffectBase {
+    fn get_effect(&mut self, context: &Context, output_format: vk::Format) -> Rc<dyn Effect> {
+        if let Some(effect) = self.effects.get(&output_format) {
+            effect.clone()
+        } else {
+            let effect = Rc::new(TriangleEffect::new(self, context, output_format));
+    
+            self.effects.insert(output_format, effect.clone());
+    
+            effect
+        }
+    }
+}
+
 pub struct TriangleEffect {
     pub format: vk::Format,
     pub render_pass: vk::RenderPass,
@@ -87,7 +94,7 @@ pub struct TriangleEffect {
 }
 
 impl TriangleEffect {
-    pub fn new(base: &TriangleEffectBase, context: &mut Context, output_format: vk::Format) -> Self {
+    pub fn new(base: &TriangleEffectBase, context: &Context, output_format: vk::Format) -> Self {
         let render_pass = create_renderpass(context, output_format);
         let pipeline = create_pipeline(
             context,
@@ -198,7 +205,7 @@ fn create_renderpass(context: &Context, format: vk::Format) -> vk::RenderPass {
 }
 
 fn create_pipeline(
-    context: &mut Context,
+    context: &Context,
     vertex_shader: vk::ShaderModule,
     fragment_shader: vk::ShaderModule,
     render_pass: vk::RenderPass,

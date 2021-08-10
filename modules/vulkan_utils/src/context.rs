@@ -373,6 +373,27 @@ impl Context {
         unsafe { self.device.create_command_pool(&create_info, None) }.expect("Out of memory")
     }
 
+    pub fn reset_command_pool(&self, pool: vk::CommandPool, release_memory: bool) {
+        unsafe {
+            self.device
+                .reset_command_pool(
+                    pool,
+                    if release_memory {
+                        vk::CommandPoolResetFlags::RELEASE_RESOURCES
+                    } else {
+                        vk::CommandPoolResetFlags::empty()
+                    },
+                )
+                .expect("Out of memory");
+        }
+    }
+
+    pub fn destroy_command_pool(&self, pool: vk::CommandPool) {
+        unsafe {
+            self.device.destroy_command_pool(pool, None);
+        }
+    }
+
     pub fn allocate_command_buffers(&self, pool: vk::CommandPool, buffers: &mut [vk::CommandBuffer]) {
         let alloc_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(pool)
@@ -385,21 +406,6 @@ impl Context {
                 .fp_v1_0()
                 .allocate_command_buffers(self.device.handle(), &alloc_info, buffers.as_mut_ptr())
                 .result()
-                .expect("Out of memory");
-        }
-    }
-
-    pub fn reset_command_pool(&self, pool: vk::CommandPool, release_memory: bool) {
-        unsafe {
-            self.device
-                .reset_command_pool(
-                    pool,
-                    if release_memory {
-                        vk::CommandPoolResetFlags::RELEASE_RESOURCES
-                    } else {
-                        vk::CommandPoolResetFlags::empty()
-                    },
-                )
                 .expect("Out of memory");
         }
     }
