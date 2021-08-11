@@ -1,7 +1,7 @@
 mod constants;
 mod effect;
-mod renderer;
+mod triangle_renderer;
 mod swapchain;
 
-pub use renderer::TriangleRenderer;
+pub use triangle_renderer::TriangleRenderer;
 pub use swapchain::Swapchain;

@@ -7,11 +7,11 @@
 // maple runner is a debug-only tool right now, can afford runtime compilation
 
 use clap::{App, Arg};
-use triangle_renderer::{Swapchain, TriangleRenderer};
+use renderer::{Swapchain, TriangleRenderer};
 
 #[derive(Debug)]
 struct CliOptions {
-    enable_vulkan_validation: bool,
+    with_vulkan_validation: bool,
 }
 
 fn main() {
@@ -19,17 +19,17 @@ fn main() {
         .version("0.1.0")
         .version_short("v")
         .arg(
-            Arg::with_name("enable_vulkan_validation")
+            Arg::with_name("with_vulkan_validation")
                 .long_help("Toggles vulkan validation layers. You must have a recent installation of the Vulkan SDK. This is true by default in debug builds.")
-                .long("enable-vulkan-validation")
+                .long("with-vulkan-validation")
                 .takes_value(true)
                 .possible_values(&["true", "false"]),
         )
         .get_matches();
 
     let options = CliOptions {
-        enable_vulkan_validation: {
-            if let Some(enable) = matches.value_of("enable_vulkan_validation") {
+        with_vulkan_validation: {
+            if let Some(enable) = matches.value_of("with_vulkan_validation") {
                 enable.parse().unwrap()
             } else {
                 cfg!(debug_assertions)
@@ -78,7 +78,7 @@ impl Drop for AppState {
 }
 
 fn run(cli_options: &CliOptions) {
-    let mut app_state = AppState::new(cli_options.enable_vulkan_validation);
+    let mut app_state = AppState::new(cli_options.with_vulkan_validation);
     app_state.create_window("Title 1");
     app_state.create_window("Title 2");
 
