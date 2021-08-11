@@ -76,7 +76,8 @@ impl Context {
     pub fn new(os_library: Library, use_validation: bool) -> Self {
         let library = EntryCustom::new_custom(os_library, |lib, name| {
             lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
-        }).expect("Loaded library does not contain Vuklan loader");
+        })
+        .expect("Loaded library does not contain Vuklan loader");
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(

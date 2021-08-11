@@ -37,7 +37,7 @@ impl Library {
     /// accessed.
     #[must_use]
     pub fn load(path: &str) -> Option<Self> {
-        platform::Library::load(path).map(|library| Self { library } )
+        platform::Library::load(path).map(|library| Self { library })
     }
 
     #[must_use]

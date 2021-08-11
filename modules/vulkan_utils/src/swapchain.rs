@@ -200,7 +200,9 @@ impl Context {
     }
 
     pub fn destroy_swapchain(&self, swapchain: SwapchainData) {
-        unsafe { self.swapchain_api.destroy_swapchain(swapchain.handle, None); }
+        unsafe {
+            self.swapchain_api.destroy_swapchain(swapchain.handle, None);
+        }
         std::mem::drop(swapchain);
     }
 
