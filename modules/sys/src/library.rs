@@ -35,10 +35,9 @@ impl Library {
     /// # Errors
     /// This function will fail if the library could not be found or otherwise
     /// accessed.
-    pub fn load(path: &str) -> Result<Self, Error> {
-        platform::Library::load(path).map_or(Err(Error::LibraryNotFound(path.to_string())), |library| {
-            Ok(Self { library })
-        })
+    #[must_use]
+    pub fn load(path: &str) -> Option<Self> {
+        platform::Library::load(path).map(|library| Self { library } )
     }
 
     #[must_use]
@@ -48,10 +47,8 @@ impl Library {
 
     /// Attempts to retrieve a symbol stored within the library, returns `None`
     /// if it was not found.
-    pub fn get_symbol(&self, name: &CStr) -> Result<*mut c_void, Error> {
-        // Delegate to avoid allocating eagerly
-        self.library
-            .get_symbol(name)
-            .ok_or_else(|| Error::SymbolNotFound(self.path().to_string(), name.to_string_lossy().to_string()))
+    #[must_use]
+    pub fn get_symbol(&self, name: &CStr) -> Option<*mut c_void> {
+        self.library.get_symbol(name)
     }
 }

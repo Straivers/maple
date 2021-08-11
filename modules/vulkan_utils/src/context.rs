@@ -16,10 +16,7 @@ use ash::{
     Device,
     EntryCustom,
     Instance,
-    InstanceError::{LoadError, VkError},
 };
-
-use thiserror::Error;
 
 use sys::library::Library;
 use utils::array_vec::ArrayVec;
@@ -33,16 +30,6 @@ const SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_surface\0".as_ptr().cast()
 const DEBUG_UTILS_EXTENSION_NAME: *const c_char = "VK_EXT_debug_utils\0\0".as_ptr().cast();
 const WIN32_SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_win32_surface\0".as_ptr().cast();
 const SWAPCHAIN_EXTENSION_NAME: *const c_char = "VK_KHR_swapchain\0".as_ptr().cast();
-
-#[derive(Error, Debug)]
-pub enum InitError {
-    #[error("No compatible GPU was found")]
-    NoGpu,
-    #[error("The driver does not support Vulkan 1.2")]
-    DriverIncompatible,
-    #[error("The application attempted to create more than one context. Only applies in certain OSes")]
-    InitMoreThanOnce,
-}
 
 pub struct VulkanDebug {
     api: DebugUtils,
@@ -85,18 +72,11 @@ pub struct Context {
 impl Context {
     /// Initializes a new vulkan context.
     /// Note: The selected GPU is guaranteed to support surface creation.
-    pub fn new(os_library: Library, use_validation: bool) -> Result<Self, InitError> {
-        let library = {
-            let entry = EntryCustom::new_custom(os_library, |lib, name| {
-                lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
-            });
-
-            if let Ok(e) = entry {
-                e
-            } else {
-                return Err(InitError::DriverIncompatible);
-            }
-        };
+    #[must_use]
+    pub fn new(os_library: Library, use_validation: bool) -> Self {
+        let library = EntryCustom::new_custom(os_library, |lib, name| {
+            lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
+        }).expect("Loaded library does not contain Vuklan loader");
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
@@ -126,13 +106,7 @@ impl Context {
                 .enabled_layer_names(layers.as_slice())
                 .enabled_extension_names(extensions.as_slice());
 
-            unsafe { library.create_instance(&create_info, None) }.map_err(|err| match err {
-                VkError(vk_error) => match vk_error {
-                    vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
-                    any => panic!("Unexpected error: {:?}", any),
-                },
-                LoadError(_) => unreachable!(),
-            })?
+            unsafe { library.create_instance(&create_info, None) }.expect("Unexpected error")
         };
 
         let debug = if use_validation {
@@ -144,11 +118,7 @@ impl Context {
         let surface_api = Surface::new(&library, &instance);
         let os_surface_api = Win32Surface::new(&library, &instance);
 
-        let gpu = if let Some(gpu) = select_physical_device(&instance, &os_surface_api) {
-            gpu
-        } else {
-            return Err(InitError::NoGpu);
-        };
+        let gpu = select_physical_device(&instance, &os_surface_api).expect("No supported GPU found");
 
         let device = {
             let priorities = [1.0];
@@ -175,16 +145,7 @@ impl Context {
                 .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
-            match unsafe { instance.create_device(gpu.handle, &create_info, None) } {
-                Ok(device) => device,
-                Err(vk_result) => {
-                    return Err(match vk_result {
-                        vk::Result::ERROR_TOO_MANY_OBJECTS => InitError::InitMoreThanOnce,
-                        vk::Result::ERROR_INCOMPATIBLE_DRIVER => InitError::DriverIncompatible,
-                        any => panic!("Unexpected error {:?}", any),
-                    })
-                }
-            }
+            unsafe { instance.create_device(gpu.handle, &create_info, None) }.expect("Unexpected error")
         };
 
         let swapchain_api = Swapchain::new(&instance, &device);
@@ -198,7 +159,7 @@ impl Context {
             unsafe { device.create_pipeline_cache(&create_info, None) }.expect("Out of memory")
         };
 
-        Ok(Self {
+        Self {
             library,
             instance,
             gpu,
@@ -212,7 +173,7 @@ impl Context {
             fence_pool: ArrayVec::new(),
             semaphore_pool: ArrayVec::new(),
             debug,
-        })
+        }
     }
 
     /// Fetches a fence from the context's pool, or creates a new one. If the

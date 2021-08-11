@@ -58,7 +58,7 @@ impl AppState {
         Self {
             event_loop: sys::window::EventLoop::new(),
             windows: Vec::new(),
-            renderer: TriangleRenderer::new(vulkan_lib, extra_validation).unwrap(),
+            renderer: TriangleRenderer::new(vulkan_lib, extra_validation),
         }
     }
 

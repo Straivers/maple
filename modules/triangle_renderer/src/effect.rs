@@ -4,11 +4,6 @@ use crate::constants::{TRIANGLE_FRAGMENT_SHADER, TRIANGLE_VERTEX_SHADER};
 use ash::vk;
 use vulkan_utils::Context;
 
-#[derive(Debug)]
-pub enum EffectError {
-    InvalidShader,
-}
-
 pub trait Effect {
     fn render_pass(&self) -> vk::RenderPass;
     fn apply(&self, context: &Context, target: vk::Framebuffer, target_rect: vk::Rect2D, cmd: vk::CommandBuffer);

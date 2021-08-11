@@ -3,7 +3,6 @@ use sys::library::Library;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::TriangleEffectBase;
-use crate::error::Error;
 use crate::swapchain::Swapchain;
 
 pub struct TriangleRenderer {
@@ -12,11 +11,11 @@ pub struct TriangleRenderer {
 }
 
 impl TriangleRenderer {
-    pub fn new(vulkan_library: Library, debug_mode: bool) -> Result<Self, Error> {
-        let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode)?;
+    pub fn new(vulkan_library: Library, debug_mode: bool) -> Self {
+        let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode);
         let effect_base = TriangleEffectBase::new(&mut vulkan);
 
-        Ok(Self { vulkan, effect_base })
+        Self { vulkan, effect_base }
     }
 
     pub fn create_swapchain(&mut self, window: sys::window::WindowRef) -> Swapchain {

@@ -2,19 +2,7 @@ use super::context::{load_vk_objects, Context};
 use sys::window::WindowRef;
 
 use ash::vk;
-use thiserror::Error;
-
 const PREFERRED_SWAPCHAIN_LENGTH: u32 = 3;
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("The window is in use by another swapchain or by another API")]
-    WindowInUse,
-    #[error("The window cannot be presented to with a swapchain")]
-    WindowNotSupported,
-    #[error("The swapchain could not be resized")]
-    ResizeFailed,
-}
 
 #[derive(Debug, Default)]
 pub struct SwapchainData {
@@ -96,6 +84,7 @@ impl SwapchainData {
 
 impl Context {
     #[cfg(target_os = "windows")]
+    #[must_use]
     pub fn create_surface(&self, window: &WindowRef) -> vk::SurfaceKHR {
         let handle = window.handle().unwrap();
 
@@ -211,7 +200,8 @@ impl Context {
     }
 
     pub fn destroy_swapchain(&self, swapchain: SwapchainData) {
-        unsafe { self.swapchain_api.destroy_swapchain(swapchain.handle, None) };
+        unsafe { self.swapchain_api.destroy_swapchain(swapchain.handle, None); }
+        std::mem::drop(swapchain);
     }
 
     fn get_swapchain_images(&self, swapchain: vk::SwapchainKHR, mut buffer: Vec<vk::Image>) -> Vec<vk::Image> {

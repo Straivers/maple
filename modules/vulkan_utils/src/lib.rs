@@ -1,5 +1,5 @@
 mod context;
 mod swapchain;
 
-pub use context::{Context, InitError};
-pub use swapchain::{Error as SwapchainError, SwapchainData};
+pub use context::Context;
+pub use swapchain::SwapchainData;
