@@ -296,6 +296,12 @@ impl Context {
         unsafe { self.device.create_pipeline_layout(create_info, None) }.expect("Out of memory")
     }
 
+    pub fn destroy_pipeline_layout(&self, pipeline_layout: vk::PipelineLayout) {
+        unsafe {
+            self.device.destroy_pipeline_layout(pipeline_layout, None);
+        }
+    }
+
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
@@ -319,6 +325,12 @@ impl Context {
         }
 
         pipeline
+    }
+
+    pub fn destroy_pipeline(&self, pipeline: vk::Pipeline) {
+        unsafe {
+            self.device.destroy_pipeline(pipeline, None);
+        }
     }
 
     /// # Panics
@@ -405,6 +417,12 @@ impl Context {
     #[must_use]
     pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
         unsafe { self.device.create_render_pass(create_info, None) }.expect("Out of memory")
+    }
+
+    pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
+        unsafe {
+            self.device.destroy_render_pass(renderpass, None);
+        }
     }
 }
 

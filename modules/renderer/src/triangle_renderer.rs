@@ -6,8 +6,8 @@ use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
 use crate::swapchain::Swapchain;
 
-pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/tri_vert.spv");
-pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/tri_frag.spv");
+pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_tri_vert.spv");
+pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_tri_frag.spv");
 
 pub struct TriangleRenderer {
     vulkan: vulkan_utils::Context,
@@ -144,44 +144,38 @@ impl TriangleEffectBase {
             effects: HashMap::new(),
         }
     }
+}
 
-    fn destroy(mut this: TriangleEffectBase, context: &mut vulkan_utils::Context) {
-        this.cleanup(context);
-        assert!(
-            this.effects.is_empty(),
-            "Cannot destroy effect base while its derivations are in use!"
-        );
-
-        unsafe {
-            context.device.destroy_shader_module(this.vertex_shader, None);
-            context.device.destroy_shader_module(this.fragment_shader, None);
-            context.device.destroy_pipeline_layout(this.pipeline_layout, None);
-        }
-    }
-
-    fn cleanup(&mut self, context: &mut vulkan_utils::Context) {
+impl EffectBase for TriangleEffectBase {
+    fn cleanup(&mut self, context: &vulkan_utils::Context) {
         self.effects.retain(|_, effect| {
             let keep = Rc::strong_count(effect) > 1;
             if !keep {
-                unsafe {
-                    context.device.destroy_render_pass(effect.render_pass, None);
-                    context.device.destroy_pipeline(effect.pipeline, None);
-                }
+                context.destroy_render_pass(effect.render_pass);
+                context.destroy_pipeline(effect.pipeline);
             }
             keep
         });
     }
-}
 
-impl EffectBase for TriangleEffectBase {
+    fn destroy(mut self, context: &vulkan_utils::Context) {
+        self.cleanup(context);
+        assert!(
+            self.effects.is_empty(),
+            "Cannot destroy effect base while its derivations are in use!"
+        );
+
+        context.destroy_shader(self.vertex_shader);
+        context.destroy_shader(self.fragment_shader);
+        context.destroy_pipeline_layout(self.pipeline_layout);
+    }
+
     fn get_effect(&mut self, context: &vulkan_utils::Context, output_format: vk::Format) -> Rc<dyn Effect> {
         if let Some(effect) = self.effects.get(&output_format) {
             effect.clone()
         } else {
             let effect = Rc::new(TriangleEffect::new(self, context, output_format));
-
             self.effects.insert(output_format, effect.clone());
-
             effect
         }
     }
