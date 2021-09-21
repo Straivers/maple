@@ -4,6 +4,7 @@ use ash::vk;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
+use sys::dpi::PhysicalSize;
 
 pub struct FrameInFlight {
     pub was_resized: bool,
@@ -18,7 +19,6 @@ pub struct Swapchain {
     pub current_frame: usize,
     pub surface: vk::SurfaceKHR,
     pub swapchain: vulkan_utils::SwapchainData,
-    pub window: sys::window::WindowRef,
     pub presentation_effect: Rc<dyn Effect>,
     pub image_views: Vec<vk::ImageView>,
     pub framebuffers: Vec<vk::Framebuffer>,
@@ -29,9 +29,9 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(
+    pub fn new<WindowData>(
         context: &mut vulkan_utils::Context,
-        window: sys::window::WindowRef,
+        window: sys::window::WindowRef<WindowData>,
         presentation_effect: &mut dyn EffectBase,
     ) -> Self {
         let surface = context.create_surface(&window);
@@ -79,7 +79,6 @@ impl Swapchain {
             current_frame: 0,
             surface,
             swapchain,
-            window,
             presentation_effect: effect,
             image_views,
             framebuffers,
@@ -115,8 +114,13 @@ impl Swapchain {
         }
     }
 
-    pub fn resize(&mut self, context: &mut vulkan_utils::Context, presentation_effect: &mut dyn EffectBase) {
-        let framebuffer_extent = physical_size_to_extent(self.window.framebuffer_size().unwrap());
+    pub fn resize(
+        &mut self,
+        fb_size: PhysicalSize,
+        context: &mut vulkan_utils::Context,
+        presentation_effect: &mut dyn EffectBase,
+    ) {
+        let framebuffer_extent = physical_size_to_extent(fb_size);
 
         let _ = context.wait_for_fences(&self.sync_fence, u64::MAX);
 
@@ -183,14 +187,8 @@ impl Swapchain {
         }
     }
 
-    pub fn frame_in_flight(&self) -> FrameInFlight {
-        let framebuffer_size = self.window.framebuffer_size().unwrap();
-
-        let extent = vk::Extent2D {
-            width: framebuffer_size.width.into(),
-            height: framebuffer_size.height.into(),
-        };
-
+    pub fn frame_in_flight(&self, target_size: PhysicalSize) -> FrameInFlight {
+        let extent = physical_size_to_extent(target_size);
         FrameInFlight {
             was_resized: self.swapchain.image_size != extent,
             extent,

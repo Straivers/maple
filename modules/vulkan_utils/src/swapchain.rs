@@ -85,7 +85,7 @@ impl SwapchainData {
 impl Context {
     #[cfg(target_os = "windows")]
     #[must_use]
-    pub fn create_surface(&self, window: &WindowRef) -> vk::SurfaceKHR {
+    pub fn create_surface<WindowUserData>(&self, window: &WindowRef<WindowUserData>) -> vk::SurfaceKHR {
         let handle = window.handle().unwrap();
 
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()

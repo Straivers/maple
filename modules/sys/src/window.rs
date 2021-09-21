@@ -1,5 +1,7 @@
 //! Platform-abstracted window creation and management.
 
+use std::ops::{Deref, DerefMut};
+
 use crate::dpi::PhysicalSize;
 use crate::{platform::window as platform, window_handle::WindowHandle};
 
@@ -7,21 +9,21 @@ use crate::{platform::window as platform, window_handle::WindowHandle};
 ///
 /// Processing window events depends on calling `EventLoop::poll()`. You should
 /// poll for events at least once per frame.
-pub struct Window {
-    window: platform::Window,
+pub struct Window<UserData> {
+    window: platform::Window<UserData>,
 }
 
-impl Window {
+impl<UserData> Window<UserData> {
     #[must_use]
-    pub fn new(event_loop: &EventLoop, title: &str) -> Self {
+    pub fn new(event_loop: &EventLoop<UserData>, title: &str, user_data: UserData) -> Self {
         Self {
-            window: platform::Window::new(&event_loop.event_loop, title),
+            window: platform::Window::<UserData>::new(&event_loop.event_loop, title, user_data),
         }
     }
 
     /// Gets a non-owning const reference to the window.
     #[must_use]
-    pub fn get(&self) -> WindowRef {
+    pub fn get(&self) -> WindowRef<UserData> {
         WindowRef {
             window: self.window.get(),
         }
@@ -40,6 +42,13 @@ impl Window {
         self.window.handle()
     }
 
+    #[must_use]
+    pub fn data_mut(&self) -> UserDataRefMut<UserData> {
+        UserDataRefMut {
+            user_data_ref: self.window.data_mut(),
+        }
+    }
+
     /// Gets the size of the window in pixels.
     #[must_use]
     pub fn framebuffer_size(&self) -> PhysicalSize {
@@ -47,13 +56,31 @@ impl Window {
     }
 }
 
-#[derive(Debug, Clone)]
-/// A non-owning const, possibly invalid const reference to a window.
-pub struct WindowRef {
-    window: platform::WindowRef,
+pub struct UserDataRefMut<'a, UserData> {
+    user_data_ref: platform::UserDataRefMut<'a, UserData>,
 }
 
-impl WindowRef {
+impl<'a, UserData> Deref for UserDataRefMut<'a, UserData> {
+    type Target = UserData;
+
+    fn deref(&self) -> &Self::Target {
+        &self.user_data_ref
+    }
+}
+
+impl<'a, UserData> DerefMut for UserDataRefMut<'a, UserData> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.user_data_ref
+    }
+}
+
+#[derive(Debug, Clone)]
+/// A non-owning const, possibly invalid const reference to a window.
+pub struct WindowRef<UserData> {
+    window: platform::WindowRef<UserData>,
+}
+
+impl<UserData> WindowRef<UserData> {
     /// Checks if this reference is still valid.
     #[must_use]
     pub fn is_valid(&self) -> bool {
@@ -87,11 +114,11 @@ impl WindowRef {
 }
 
 /// A platform-dependent event loop for processing window events.
-pub struct EventLoop {
-    event_loop: platform::EventLoop,
+pub struct EventLoop<UserData> {
+    event_loop: platform::EventLoop<UserData>,
 }
 
-impl EventLoop {
+impl<UserData> EventLoop<UserData> {
     /// Creates a new event loop
     #[must_use]
     pub fn new() -> Self {

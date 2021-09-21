@@ -13,7 +13,9 @@ struct Vec<T: Copy, const SIZE: usize> {
     parts: [T; SIZE],
 }
 
+#[allow(clippy::non_camel_case_types)]
 type float2 = Vec<f32, 2>;
+#[allow(clippy::non_camel_case_types)]
 type float3 = Vec<f32, 3>;
 
 #[repr(C)]
@@ -71,7 +73,7 @@ impl SimpleVertexRenderer {
         Self { context, effect_base }
     }
 
-    pub fn create_swapchain(&mut self, window: sys::window::WindowRef) -> Swapchain {
+    pub fn create_swapchain<WindowUserData>(&mut self, window: sys::window::WindowRef<WindowUserData>) -> Swapchain {
         Swapchain::new(&mut self.context, window, &mut self.effect_base)
     }
 
@@ -80,7 +82,7 @@ impl SimpleVertexRenderer {
     }
 
     pub fn end_frame(&mut self) {
-        self.effect_base.cleanup(&mut self.context);
+        self.effect_base.cleanup(&self.context);
     }
 }
 

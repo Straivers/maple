@@ -8,6 +8,7 @@
 
 use clap::{App, Arg};
 use renderer::{Swapchain, TriangleRenderer};
+use sys::window::{EventLoop, Window};
 
 #[derive(Debug)]
 struct CliOptions {
@@ -40,13 +41,10 @@ fn main() {
     run(&options);
 }
 
-struct AppWindow {
-    window: sys::window::Window,
-    swapchain: Box<Swapchain>,
-}
+type AppWindow = Window<Option<Swapchain>>;
 
 struct AppState {
-    event_loop: sys::window::EventLoop,
+    event_loop: EventLoop<Option<Swapchain>>,
     windows: Vec<AppWindow>,
     renderer: TriangleRenderer,
 }
@@ -56,23 +54,26 @@ impl AppState {
         let vulkan_lib =
             sys::library::Library::load("vulkan-1").expect("Could not initialize Vulkan, vulkan-1 not found");
         Self {
-            event_loop: sys::window::EventLoop::new(),
+            event_loop: EventLoop::new(),
             windows: Vec::new(),
             renderer: TriangleRenderer::new(vulkan_lib, extra_validation),
         }
     }
 
     fn create_window(&mut self, title: &str) {
-        let window = sys::window::Window::new(&self.event_loop, title);
-        let swapchain = Box::new(self.renderer.create_swapchain(window.get()));
-        self.windows.push(AppWindow { window, swapchain });
+        let window = AppWindow::new(&self.event_loop, title, None);
+        let swapchain = { Some(self.renderer.create_swapchain(window.get())) };
+        *window.data_mut() = swapchain;
+        self.windows.push(window);
     }
 }
 
 impl Drop for AppState {
     fn drop(&mut self) {
         for window in self.windows.drain(0..) {
-            self.renderer.destroy_swapchain(*window.swapchain);
+            if let Some(swapchain) = window.data_mut().take() {
+                self.renderer.destroy_swapchain(swapchain);
+            }
         }
     }
 }
@@ -87,16 +88,22 @@ fn run(cli_options: &CliOptions) {
 
         let mut i = 0;
         while i < app_state.windows.len() {
-            if app_state.windows[i].window.was_close_requested() {
+            if app_state.windows[i].was_close_requested() {
                 let window = app_state.windows.swap_remove(i);
-                app_state.renderer.destroy_swapchain(*window.swapchain);
+
+                if let Some(swapchain) = window.data_mut().take() {
+                    app_state.renderer.destroy_swapchain(swapchain);
+                };
             } else {
                 i += 1;
             }
         }
 
         for window in &mut app_state.windows {
-            app_state.renderer.render_to(&mut window.swapchain);
+            let fb_size = window.framebuffer_size();
+            if let Some(swapchain) = window.data_mut().as_mut() {
+                app_state.renderer.render_to(swapchain, fb_size);
+            }
         }
 
         app_state.renderer.end_frame();

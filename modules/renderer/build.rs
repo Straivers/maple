@@ -13,7 +13,7 @@ fn compile_shaders() {
         if let Ok(entry) = f {
             let is_file = entry.file_type().map_or(false, |f| f.is_file());
 
-            let path = std::path::PathBuf::from(entry.path());
+            let path = entry.path();
             let extension = path.extension().unwrap_or_default();
 
             let is_shader = extension == "vert" || extension == "frag";

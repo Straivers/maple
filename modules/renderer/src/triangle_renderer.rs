@@ -1,5 +1,6 @@
 use ash::vk;
 use std::{collections::HashMap, ffi::CStr, rc::Rc};
+use sys::dpi::PhysicalSize;
 use sys::library::Library;
 
 use crate::constants::FRAMES_IN_FLIGHT;
@@ -22,7 +23,7 @@ impl TriangleRenderer {
         Self { vulkan, effect_base }
     }
 
-    pub fn create_swapchain(&mut self, window: sys::window::WindowRef) -> Swapchain {
+    pub fn create_swapchain<WindowUserData>(&mut self, window: sys::window::WindowRef<WindowUserData>) -> Swapchain {
         Swapchain::new(&mut self.vulkan, window, &mut self.effect_base)
     }
 
@@ -31,18 +32,18 @@ impl TriangleRenderer {
     }
 
     pub fn end_frame(&mut self) {
-        self.effect_base.cleanup(&mut self.vulkan);
+        self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut Swapchain) {
-        let frame = swapchain.frame_in_flight();
+    pub fn render_to(&mut self, swapchain: &mut Swapchain, target_size: PhysicalSize) {
+        let frame = swapchain.frame_in_flight(target_size);
 
         if frame.extent == vk::Extent2D::default() {
             return;
         }
 
         if frame.was_resized {
-            swapchain.resize(&mut self.vulkan, &mut self.effect_base);
+            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
             return;
         }
 
@@ -51,7 +52,7 @@ impl TriangleRenderer {
         let image_index = if let Some(index) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore) {
             index
         } else {
-            swapchain.resize(&mut self.vulkan, &mut self.effect_base);
+            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
             return;
         };
 
@@ -106,7 +107,7 @@ impl TriangleRenderer {
         }
 
         if swapchain.swapchain.present(&self.vulkan, &[frame.present_semaphore]) {
-            swapchain.resize(&mut self.vulkan, &mut self.effect_base);
+            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
         }
 
         swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
@@ -115,7 +116,7 @@ impl TriangleRenderer {
 
 impl Drop for TriangleRenderer {
     fn drop(&mut self) {
-        TriangleEffectBase::destroy(std::mem::take(&mut self.effect_base), &mut self.vulkan);
+        TriangleEffectBase::destroy(std::mem::take(&mut self.effect_base), &self.vulkan);
     }
 }
 
