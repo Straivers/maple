@@ -4,7 +4,7 @@ use ash::vk;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
-use sys::dpi::PhysicalSize;
+use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 pub struct FrameInFlight {
     pub was_resized: bool,
@@ -29,14 +29,15 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new<WindowData>(
+    pub fn new(
         context: &mut vulkan_utils::Context,
-        window: sys::window::WindowRef<WindowData>,
+        window_handle: WindowHandle,
+        framebuffer_size: PhysicalSize,
         presentation_effect: &mut dyn EffectBase,
     ) -> Self {
-        let surface = context.create_surface(&window);
+        let surface = context.create_surface(window_handle);
         let swapchain = {
-            let extent = physical_size_to_extent(window.framebuffer_size().unwrap());
+            let extent = physical_size_to_extent(framebuffer_size);
             vulkan_utils::SwapchainData::new(context, surface, extent)
         };
         let effect = presentation_effect.get_effect(context, swapchain.format);

@@ -21,14 +21,6 @@ impl<UserData> Window<UserData> {
         }
     }
 
-    /// Gets a non-owning const reference to the window.
-    #[must_use]
-    pub fn get(&self) -> WindowRef<UserData> {
-        WindowRef {
-            window: self.window.get(),
-        }
-    }
-
     /// Checks if the user requested that the window be closed (by clicking the
     /// close button).
     #[must_use]
@@ -71,45 +63,6 @@ impl<'a, UserData> Deref for UserDataRefMut<'a, UserData> {
 impl<'a, UserData> DerefMut for UserDataRefMut<'a, UserData> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.user_data_ref
-    }
-}
-
-#[derive(Debug, Clone)]
-/// A non-owning const, possibly invalid const reference to a window.
-pub struct WindowRef<UserData> {
-    window: platform::WindowRef<UserData>,
-}
-
-impl<UserData> WindowRef<UserData> {
-    /// Checks if this reference is still valid.
-    #[must_use]
-    pub fn is_valid(&self) -> bool {
-        self.window.is_valid()
-    }
-
-    /// Checks if the user requested that the window be closed (by Alt+F4,
-    /// clicking the close button, etc.).
-    ///
-    /// Returns `None` if the window reference is no longer valid.
-    #[must_use]
-    pub fn was_close_requested(&self) -> Option<bool> {
-        self.window.was_close_requested()
-    }
-
-    /// Gets the handle to the window.
-    ///
-    /// Returns `None` if the window reference is no longer valid.
-    #[must_use]
-    pub fn handle(&self) -> Option<WindowHandle> {
-        self.window.handle()
-    }
-
-    /// Gets the size of the window's framebuffer in pixels.
-    ///
-    /// Returns `None` if the window reference is no longer valid.
-    #[must_use]
-    pub fn framebuffer_size(&self) -> Option<PhysicalSize> {
-        self.window.framebuffer_size()
     }
 }
 

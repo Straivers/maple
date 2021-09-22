@@ -4,7 +4,6 @@ use std::{
     ffi::c_void,
     marker::{PhantomData, PhantomPinned},
     ops::{Deref, DerefMut},
-    rc,
 };
 use utils::array_vec::ArrayVec;
 use win32::{
@@ -47,7 +46,7 @@ struct WindowData<UserData> {
 /// frequently.
 #[derive(Debug)]
 pub(crate) struct Window<UserData> {
-    window_data: rc::Rc<RefCell<WindowData<UserData>>>,
+    window_data: Box<RefCell<WindowData<UserData>>>,
 }
 
 impl<UserData> Window<UserData> {
@@ -58,7 +57,7 @@ impl<UserData> Window<UserData> {
         let hinstance = unsafe { GetModuleHandleW(None) };
         assert_ne!(hinstance, HINSTANCE::NULL);
 
-        let window_data = rc::Rc::new(RefCell::new(WindowData {
+        let mut window_data = Box::new(RefCell::new(WindowData {
             hwnd: HWND::NULL,
             hinstance,
             width: 0,
@@ -73,7 +72,7 @@ impl<UserData> Window<UserData> {
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW,
             hInstance: hinstance,
-            lpfnWndProc: Some(EventLoop::<UserData>::wndproc),
+            lpfnWndProc: Some(EventLoop::<UserData>::wndproc_trampoline),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
             hCursor: cursor,
             ..WNDCLASSW::default()
@@ -96,20 +95,13 @@ impl<UserData> Window<UserData> {
                 None,
                 None,
                 GetModuleHandleW(None),
-                rc::Rc::as_ptr(&window_data) as *mut c_void,
+                (&mut *window_data) as *mut RefCell<WindowData<UserData>> as *mut c_void,
             )
         };
 
         unsafe { ShowWindow(hwnd, SW_SHOW) };
 
         Window { window_data }
-    }
-
-    #[must_use]
-    pub fn get(&self) -> WindowRef<UserData> {
-        WindowRef {
-            pointer: rc::Rc::downgrade(&self.window_data.clone()),
-        }
     }
 
     #[must_use]
@@ -122,13 +114,6 @@ impl<UserData> Window<UserData> {
         WindowHandle {
             hwnd: self.window_data.borrow().hwnd.0 as _,
             hinstance: self.window_data.borrow().hinstance.0 as _,
-        }
-    }
-
-    #[must_use]
-    pub fn data(&self) -> UserDataRef<UserData> {
-        UserDataRef {
-            window_ref: self.window_data.borrow(),
         }
     }
 
@@ -155,18 +140,6 @@ impl<UserData> Drop for Window<UserData> {
     }
 }
 
-pub struct UserDataRef<'a, UserData> {
-    window_ref: std::cell::Ref<'a, WindowData<UserData>>,
-}
-
-impl<'a, UserData> Deref for UserDataRef<'a, UserData> {
-    type Target = UserData;
-
-    fn deref(&self) -> &Self::Target {
-        &self.window_ref.user_data
-    }
-}
-
 pub struct UserDataRefMut<'a, UserData> {
     window_ref: std::cell::RefMut<'a, WindowData<UserData>>,
 }
@@ -182,45 +155,6 @@ impl<'a, UserData> Deref for UserDataRefMut<'a, UserData> {
 impl<'a, UserData> DerefMut for UserDataRefMut<'a, UserData> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.window_ref.user_data
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct WindowRef<UserData> {
-    pointer: rc::Weak<RefCell<WindowData<UserData>>>,
-}
-
-impl<UserData> WindowRef<UserData> {
-    #[must_use]
-    pub fn is_valid(&self) -> bool {
-        self.pointer.strong_count() > 0
-    }
-
-    #[must_use]
-    pub fn was_close_requested(&self) -> Option<bool> {
-        let pointer = self.pointer.upgrade()?;
-        let window_data = pointer.borrow();
-        Some(window_data.was_close_requested)
-    }
-
-    #[must_use]
-    pub fn handle(&self) -> Option<WindowHandle> {
-        let pointer = self.pointer.upgrade()?;
-        let window_data = pointer.borrow();
-        Some(WindowHandle {
-            hwnd: window_data.hwnd.0 as _,
-            hinstance: window_data.hinstance.0 as _,
-        })
-    }
-
-    #[must_use]
-    pub fn framebuffer_size(&self) -> Option<PhysicalSize> {
-        let pointer = self.pointer.upgrade()?;
-        let window_data = pointer.borrow();
-        Some(PhysicalSize {
-            width: window_data.width,
-            height: window_data.height,
-        })
     }
 }
 
@@ -274,43 +208,67 @@ impl<UserData> EventLoop<UserData> {
     }
 
     #[allow(clippy::similar_names)]
-    unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    /// The default-unsafe wndproc callback. It handles setting up the window's
+    /// data pointer when the window is created, and retrieving it during later
+    /// calls. If the data pointer is valid, control is passed to
+    /// [Self::wndproc].
+    ///
+    /// Note: This function passes control to [Self::wndproc] only if the `msg`
+    /// parameter is associated with a particular window.
+    unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if msg == WM_CREATE {
             let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, cs.lpCreateParams as _);
 
-            // BUG: This should be Rc<RefCel<WindowData<UserData>>>!!!
-            let window = cs.lpCreateParams as *const RefCell<WindowData<UserData>>;
-            (*window).borrow_mut().hwnd = hwnd;
+            let window = &*(cs.lpCreateParams as *const RefCell<WindowData<UserData>>);
+            window.borrow_mut().hwnd = hwnd;
 
             return LRESULT::default();
         }
 
-        // BUG: This should be Rc<RefCel<WindowData<UserData>>>!!!
-        let window = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<WindowData<UserData>>;
+        let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<WindowData<UserData>>;
 
-        if window.is_null() {
-            return DefWindowProcW(hwnd, msg, wparam, lparam);
+        if window_ptr.is_null() {
+            DefWindowProcW(hwnd, msg, wparam, lparam)
+        } else {
+            Self::wndproc(&*window_ptr, hwnd, msg, wparam, lparam)
         }
+    }
 
+    /// The default-safe wndproc. It can be assumed that the `window` parameter
+    /// is valid and points to the same window as `hwnd`.
+    ///
+    /// We take both [WindowData] and [HWND] here because [DefWindowProcW]
+    /// requires an [HWND] that we'd otherwise have to borrow from the
+    /// [WindowData]'s [RefCell]. This is a problem becuase [DefWindowProcW]
+    /// might send a different message; if we want to handle that message and
+    /// try to modify the [WindowData] through a mutable borrow, the program
+    /// will panic with a const/mut borrow conflict.
+    fn wndproc(
+        window: &RefCell<WindowData<UserData>>,
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
         match msg {
             WM_CLOSE => {
-                (*window).borrow_mut().was_close_requested = true;
+                window.borrow_mut().was_close_requested = true;
                 LRESULT::default()
             }
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
                 let width = lparam.0 as i16;
                 let height = (lparam.0 >> i16::BITS) & 0xFFFF;
-                (*window).borrow_mut().width = width.try_into().expect("Window width is negative or > 65535");
-                (*window).borrow_mut().height = height.try_into().expect("Window width is negative or > 65535");
+                window.borrow_mut().width = width.try_into().expect("Window width is negative or > 65535");
+                window.borrow_mut().height = height.try_into().expect("Window width is negative or > 65535");
                 LRESULT::default()
             }
             WM_DESTROY => {
-                (*window).borrow_mut().hwnd = HWND::NULL;
+                window.borrow_mut().hwnd = HWND::NULL;
                 LRESULT::default()
             }
-            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+            _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }
     }
 }

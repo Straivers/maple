@@ -3,7 +3,7 @@ use std::{collections::HashMap, convert::TryInto, ffi::CStr, rc::Rc};
 use crate::effect::{Effect, EffectBase};
 use crate::swapchain::Swapchain;
 use ash::vk;
-use sys::library::Library;
+use sys::{dpi::PhysicalSize, library::Library, window_handle::WindowHandle};
 
 const VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
 const FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_frag.spv");
@@ -13,9 +13,9 @@ struct Vec<T: Copy, const SIZE: usize> {
     parts: [T; SIZE],
 }
 
-#[allow(clippy::non_camel_case_types)]
+#[allow(non_camel_case_types)]
 type float2 = Vec<f32, 2>;
-#[allow(clippy::non_camel_case_types)]
+#[allow(non_camel_case_types)]
 type float3 = Vec<f32, 3>;
 
 #[repr(C)]
@@ -73,8 +73,13 @@ impl SimpleVertexRenderer {
         Self { context, effect_base }
     }
 
-    pub fn create_swapchain<WindowUserData>(&mut self, window: sys::window::WindowRef<WindowUserData>) -> Swapchain {
-        Swapchain::new(&mut self.context, window, &mut self.effect_base)
+    pub fn create_swapchain(&mut self, window_handle: WindowHandle, framebuffer_size: PhysicalSize) -> Swapchain {
+        Swapchain::new(
+            &mut self.context,
+            window_handle,
+            framebuffer_size,
+            &mut self.effect_base,
+        )
     }
 
     pub fn destroy_swapchain(&mut self, swapchain: Swapchain) {

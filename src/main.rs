@@ -62,7 +62,10 @@ impl AppState {
 
     fn create_window(&mut self, title: &str) {
         let window = AppWindow::new(&self.event_loop, title, None);
-        let swapchain = { Some(self.renderer.create_swapchain(window.get())) };
+        let swapchain = Some(
+            self.renderer
+                .create_swapchain(window.handle(), window.framebuffer_size()),
+        );
         *window.data_mut() = swapchain;
         self.windows.push(window);
     }

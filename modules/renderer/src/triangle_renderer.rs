@@ -1,7 +1,7 @@
 use ash::vk;
 use std::{collections::HashMap, ffi::CStr, rc::Rc};
-use sys::dpi::PhysicalSize;
 use sys::library::Library;
+use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
@@ -23,8 +23,8 @@ impl TriangleRenderer {
         Self { vulkan, effect_base }
     }
 
-    pub fn create_swapchain<WindowUserData>(&mut self, window: sys::window::WindowRef<WindowUserData>) -> Swapchain {
-        Swapchain::new(&mut self.vulkan, window, &mut self.effect_base)
+    pub fn create_swapchain(&mut self, window_handle: WindowHandle, framebuffer_size: PhysicalSize) -> Swapchain {
+        Swapchain::new(&mut self.vulkan, window_handle, framebuffer_size, &mut self.effect_base)
     }
 
     pub fn destroy_swapchain(&mut self, swapchain: Swapchain) {

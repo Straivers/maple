@@ -1,5 +1,4 @@
 use super::context::{load_vk_objects, Context};
-use sys::window::WindowRef;
 
 use ash::vk;
 const PREFERRED_SWAPCHAIN_LENGTH: u32 = 3;
@@ -85,12 +84,10 @@ impl SwapchainData {
 impl Context {
     #[cfg(target_os = "windows")]
     #[must_use]
-    pub fn create_surface<WindowUserData>(&self, window: &WindowRef<WindowUserData>) -> vk::SurfaceKHR {
-        let handle = window.handle().unwrap();
-
+    pub fn create_surface(&self, window_handle: sys::window_handle::WindowHandle) -> vk::SurfaceKHR {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
-            .hwnd(handle.hwnd)
-            .hinstance(handle.hinstance);
+            .hwnd(window_handle.hwnd)
+            .hinstance(window_handle.hinstance);
         unsafe { self.os_surface_api.create_win32_surface(&ci, None) }.expect("Out of memory")
     }
 
