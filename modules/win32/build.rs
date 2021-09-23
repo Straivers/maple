@@ -16,17 +16,18 @@ fn build_apis() {
                 Diagnostics::Debug::{
                     GetLastError,
                     SetErrorMode,
-                }
+                },
             },
             UI::{
                 WindowsAndMessaging::{
                     // Constants
-                    CW_USEDEFAULT, IDC_ARROW, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE,
+                    CW_USEDEFAULT, IDC_ARROW, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE, WM_NULL,
                     // Structs
                     CREATESTRUCTW, MSG, WINDOW_EX_STYLE, WNDCLASSW,
                     // Functions
                     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, LoadCursorW,
-                    PeekMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+                    PeekMessageW, GetMessageW, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+                    PostQuitMessage, GetWindowRect,
                 },
                 HiDpi::GetProcessDpiAwareness,
             },

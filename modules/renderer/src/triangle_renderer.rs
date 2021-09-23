@@ -44,7 +44,6 @@ impl TriangleRenderer {
 
         if frame.was_resized {
             swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
-            return;
         }
 
         let _ = self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);

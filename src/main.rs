@@ -6,9 +6,18 @@
 // shaders should be recompiled on command during debug
 // maple runner is a debug-only tool right now, can afford runtime compilation
 
+use std::{collections::HashMap, time::{Duration, Instant}};
+
 use clap::{App, Arg};
 use renderer::{Swapchain, TriangleRenderer};
-use sys::window::{EventLoop, Window};
+use sys::{
+    dpi::PhysicalSize,
+    window::{EventLoop, EventLoopControl},
+    window_event::WindowEvent,
+    window_handle::WindowHandle,
+};
+
+const MIN_FRAME_RATE: u32 = 60;
 
 #[derive(Debug)]
 struct CliOptions {
@@ -41,11 +50,14 @@ fn main() {
     run(&options);
 }
 
-type AppWindow = Window<Option<Swapchain>>;
+struct AppWindow {
+    size: PhysicalSize,
+    swapchain: Swapchain,
+    last_draw: Instant,
+}
 
 struct AppState {
-    event_loop: EventLoop<Option<Swapchain>>,
-    windows: Vec<AppWindow>,
+    windows: HashMap<WindowHandle, AppWindow>,
     renderer: TriangleRenderer,
 }
 
@@ -54,61 +66,71 @@ impl AppState {
         let vulkan_lib =
             sys::library::Library::load("vulkan-1").expect("Could not initialize Vulkan, vulkan-1 not found");
         Self {
-            event_loop: EventLoop::new(),
-            windows: Vec::new(),
+            windows: HashMap::new(),
             renderer: TriangleRenderer::new(vulkan_lib, extra_validation),
         }
-    }
-
-    fn create_window(&mut self, title: &str) {
-        let window = AppWindow::new(&self.event_loop, title, None);
-        let swapchain = Some(
-            self.renderer
-                .create_swapchain(window.handle(), window.framebuffer_size()),
-        );
-        *window.data_mut() = swapchain;
-        self.windows.push(window);
     }
 }
 
 impl Drop for AppState {
     fn drop(&mut self) {
-        for window in self.windows.drain(0..) {
-            if let Some(swapchain) = window.data_mut().take() {
-                self.renderer.destroy_swapchain(swapchain);
-            }
+        for (_, app_window) in self.windows.drain() {
+            self.renderer.destroy_swapchain(app_window.swapchain);
         }
     }
 }
 
 fn run(cli_options: &CliOptions) {
     let mut app_state = AppState::new(cli_options.with_vulkan_validation);
-    app_state.create_window("Title 1");
-    app_state.create_window("Title 2");
+    let mut min_frame_time = Duration::from_secs(1) / MIN_FRAME_RATE;
 
-    while !app_state.windows.is_empty() {
-        app_state.event_loop.poll();
+    let mut event_loop = EventLoop::new(move |proxy, event| {
+        match event {
+            WindowEvent::Created { window, size } => {
+                println!("Created");
+                let swapchain = app_state.renderer.create_swapchain(window, size);
+                app_state.windows.insert(window, AppWindow { size, swapchain, last_draw: Instant::now() });
+            }
+            WindowEvent::CloseRequested { window } => {
+                println!("Destroyed");
+                if let Some(app_window) = app_state.windows.remove(&window) {
+                    app_state.renderer.destroy_swapchain(app_window.swapchain);
+                }
+                proxy.destroy_window(window);
 
-        let mut i = 0;
-        while i < app_state.windows.len() {
-            if app_state.windows[i].was_close_requested() {
-                let window = app_state.windows.swap_remove(i);
+                if proxy.num_windows() == 0 {
+                    return EventLoopControl::Stop;
+                }
+            }
+            WindowEvent::Resized { window, size } => {
+                let app_window = app_state.windows.get_mut(&window).unwrap();
+                app_window.size = size;
+                app_state.renderer.render_to(&mut app_window.swapchain, size);
+                app_window.last_draw = Instant::now();
 
-                if let Some(swapchain) = window.data_mut().take() {
-                    app_state.renderer.destroy_swapchain(swapchain);
-                };
-            } else {
-                i += 1;
+                // Keep other windows from locking up whle modalling resizing.
+                for (handle, app_window) in app_state.windows.iter_mut() {
+                    if *handle != window && Instant::now() - app_window.last_draw >= min_frame_time {
+                        app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
+                        app_window.last_draw = Instant::now();
+                    }
+                }
+            }
+            WindowEvent::Redraw {} => {
+                for (_, app_window) in app_state.windows.iter_mut() {
+                    app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
+                    app_window.last_draw = Instant::now();
+                }
+
+                app_state.renderer.end_frame();
+            }
+            WindowEvent::Update {} => {
             }
         }
+        EventLoopControl::Continue
+    });
 
-        for window in &mut app_state.windows {
-            let fb_size = window.framebuffer_size();
-            if let Some(swapchain) = window.data_mut().as_mut() {
-                app_state.renderer.render_to(swapchain, fb_size);
-            }
-        }
-
-        app_state.renderer.end_frame();
-    }
+    let _ = event_loop.create_window("Title 1");
+    let _ = event_loop.create_window("Title 2");
+    event_loop.run(20);
 }

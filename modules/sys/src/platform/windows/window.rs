@@ -1,23 +1,27 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     convert::TryInto,
     ffi::c_void,
-    marker::{PhantomData, PhantomPinned},
-    ops::{Deref, DerefMut},
+    time::{Duration, Instant},
 };
 use utils::array_vec::ArrayVec;
 use win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM},
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, LoadCursorW, PeekMessageW,
-        RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
-        CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE,
-        WM_DESTROY, WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
+        LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+        CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_HIDE,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 
-use crate::{dpi::PhysicalSize, window_handle::WindowHandle};
+use crate::{
+    dpi::PhysicalSize,
+    window::{EventLoopControl, EventLoopProxy},
+    window_event::WindowEvent,
+    window_handle::WindowHandle,
+};
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
 
@@ -27,52 +31,37 @@ const WNDCLASS_NAME: &str = "maple_wndclass";
 /// That is to say: at most 255 characters, plus the '\0' character.
 pub const MAX_TITLE_LENGTH: usize = 256;
 
-#[derive(Default, Debug)]
-struct WindowData<UserData> {
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-    width: u16,
-    height: u16,
-    was_close_requested: bool,
-    user_data: UserData,
-    _pin: PhantomPinned,
-}
-
-/// A window created by the operating system's window manager. The OS window will
-/// be destroyed automatically when the structure is dropped.
+/// Represents an event loop or message pump for retrieving input events from
+/// the window manager. Events are automatically sent to the relevant window,
+/// where they may be queried.
 ///
-/// Note, however, that some window activities such as processing the close
-/// button, minimizing, or resizing require that the `EventLoop` be polled
-/// frequently.
-#[derive(Debug)]
-pub(crate) struct Window<UserData> {
-    window_data: Box<RefCell<WindowData<UserData>>>,
+// Impl Note: This is a great place to stash anything that is shared between
+// windows.
+pub(crate) struct EventLoop {
+    // So that we get /* fields omitted */ in the docs
+    callback: Box<RefCell<dyn FnMut(&EventLoopProxy, WindowEvent) -> EventLoopControl>>,
+    hinstance: HINSTANCE,
+    class_name: ArrayVec<u16, 16>,
+    num_windows: Cell<u32>,
+    control: Cell<EventLoopControl>,
+    destroy_queue: RefCell<Vec<WindowHandle>>,
 }
 
-impl<UserData> Window<UserData> {
-    #[must_use]
-    pub fn new(_: &EventLoop<UserData>, title: &str, user_data: UserData) -> Self {
+impl EventLoop {
+    pub fn new<Callback>(callback: Callback) -> Self
+    where
+        Callback: 'static + FnMut(&EventLoopProxy, WindowEvent) -> EventLoopControl,
+    {
         let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
         let hinstance = unsafe { GetModuleHandleW(None) };
         assert_ne!(hinstance, HINSTANCE::NULL);
-
-        let mut window_data = Box::new(RefCell::new(WindowData {
-            hwnd: HWND::NULL,
-            hinstance,
-            width: 0,
-            height: 0,
-            was_close_requested: false,
-            user_data,
-            _pin: PhantomPinned,
-        }));
-
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
 
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW,
             hInstance: hinstance,
-            lpfnWndProc: Some(EventLoop::<UserData>::wndproc_trampoline),
+            lpfnWndProc: Some(Self::wndproc_trampoline),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
             hCursor: cursor,
             ..WNDCLASSW::default()
@@ -80,12 +69,66 @@ impl<UserData> Window<UserData> {
 
         let _ = unsafe { RegisterClassW(&class) };
 
+        Self {
+            callback: Box::new(RefCell::new(callback)),
+            hinstance,
+            class_name,
+            num_windows: Cell::new(0),
+            control: Cell::new(EventLoopControl::Continue),
+            destroy_queue: RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn num_windows(&self) -> u32 {
+        self.num_windows.get()
+    }
+
+    /// Runs the event loop continuously.
+    pub fn run(&mut self, updates_per_second: u32) {
+        let msecs_per_tick = Duration::from_secs(1) / updates_per_second;
+
+        let mut previous = Instant::now();
+        let mut tick_lag = Duration::ZERO;
+
+        let mut msg = MSG::default();
+        while self.control.get() != EventLoopControl::Stop {
+            let current = Instant::now();
+            let elapsed = current - previous;
+            previous = current;
+
+            tick_lag += elapsed;
+
+            for window in self.destroy_queue.borrow_mut().drain(0..) {
+                unsafe { DestroyWindow(HWND(window.hwnd as _)) };
+            }
+
+            unsafe {
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+
+                    if msg.message == WM_QUIT {
+                        break;
+                    }
+                }
+            }
+
+            while tick_lag >= msecs_per_tick {
+                self.callback.borrow_mut()(&self.proxy(), WindowEvent::Update {});
+                tick_lag -= msecs_per_tick;
+            }
+
+            self.callback.borrow_mut()(&self.proxy(), WindowEvent::Redraw {});
+        }
+    }
+
+    pub fn create_window(&self, title: &str) -> WindowHandle {
         let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(title);
 
         let hwnd = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                PWSTR(class_name.as_mut_ptr()),
+                PWSTR(self.class_name.as_ptr() as *mut _),
                 PWSTR(w_title.as_mut_ptr()),
                 WS_OVERLAPPEDWINDOW,
                 CW_USEDEFAULT,
@@ -95,116 +138,30 @@ impl<UserData> Window<UserData> {
                 None,
                 None,
                 GetModuleHandleW(None),
-                (&mut *window_data) as *mut RefCell<WindowData<UserData>> as *mut c_void,
+                (self as *const Self) as *mut c_void,
             )
         };
 
         unsafe { ShowWindow(hwnd, SW_SHOW) };
 
-        Window { window_data }
-    }
+        self.num_windows.set(self.num_windows.get() + 1);
 
-    #[must_use]
-    pub fn was_close_requested(&self) -> bool {
-        self.window_data.borrow().was_close_requested
-    }
-
-    #[must_use]
-    pub fn handle(&self) -> WindowHandle {
         WindowHandle {
-            hwnd: self.window_data.borrow().hwnd.0 as _,
-            hinstance: self.window_data.borrow().hinstance.0 as _,
+            hwnd: hwnd.0 as _,
+            hinstance: self.hinstance.0 as _,
         }
     }
 
-    #[must_use]
-    pub fn data_mut(&self) -> UserDataRefMut<UserData> {
-        UserDataRefMut {
-            window_ref: self.window_data.borrow_mut(),
-        }
+    pub fn destroy_window(&self, window: WindowHandle) {
+        unsafe { ShowWindow(HWND(window.hwnd as _), SW_HIDE) };
+        self.destroy_queue.borrow_mut().push(window);
+
+        assert!(self.num_windows.get() > 0);
+        self.num_windows.set(self.num_windows.get() - 1);
     }
 
-    #[must_use]
-    pub fn framebuffer_size(&self) -> PhysicalSize {
-        PhysicalSize {
-            width: self.window_data.borrow().width,
-            height: self.window_data.borrow().height,
-        }
-    }
-}
-
-impl<UserData> Drop for Window<UserData> {
-    fn drop(&mut self) {
-        let hwnd = { self.window_data.borrow().hwnd };
-        unsafe { DestroyWindow(hwnd) };
-    }
-}
-
-pub struct UserDataRefMut<'a, UserData> {
-    window_ref: std::cell::RefMut<'a, WindowData<UserData>>,
-}
-
-impl<'a, UserData> Deref for UserDataRefMut<'a, UserData> {
-    type Target = UserData;
-
-    fn deref(&self) -> &Self::Target {
-        &self.window_ref.user_data
-    }
-}
-
-impl<'a, UserData> DerefMut for UserDataRefMut<'a, UserData> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.window_ref.user_data
-    }
-}
-
-/// Represents an event loop or message pump for retrieving input events from
-/// the window manager. Events are automatically sent to the relevant window,
-/// where they may be queried.
-///
-// Impl Note: This is a great place to stash anything that is shared between
-// windows.
-#[derive(Default)]
-pub(crate) struct EventLoop<UserData> {
-    // So that we get /* fields omitted */ in the docs
-    #[doc(hidden)]
-    _empty: u8,
-    _phantom: PhantomData<UserData>,
-}
-
-impl<UserData> EventLoop<UserData> {
-    /// Creates a new event loop
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            _empty: 0,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Polls the operating system for input and window events. The events will
-    /// be processed and reflected in their respective window objects when this
-    /// call is complete. Call this at least once per frame to ensure responsiveness.
-    ///
-    /// Make sure to call this on the same thread that the OS windows were
-    /// created.
-    #[allow(clippy::unused_self)]
-    pub fn poll(&mut self) {
-        // Note: Performance here is probably not great, as you have to call
-        // `poll()` for every window that you have. If you want to reduce
-        // latency, you may have to call this several times for every event
-        // loop, which exacerbates the issue.
-        let mut msg = MSG::default();
-        unsafe {
-            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-
-                if msg.message == WM_QUIT {
-                    break;
-                }
-            }
-        }
+    fn proxy(&self) -> EventLoopProxy {
+        EventLoopProxy { event_loop: self }
     }
 
     #[allow(clippy::similar_names)]
@@ -219,19 +176,14 @@ impl<UserData> EventLoop<UserData> {
         if msg == WM_CREATE {
             let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, cs.lpCreateParams as _);
-
-            let window = &*(cs.lpCreateParams as *const RefCell<WindowData<UserData>>);
-            window.borrow_mut().hwnd = hwnd;
-
-            return LRESULT::default();
         }
 
-        let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<WindowData<UserData>>;
+        let event_loop_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Self;
 
-        if window_ptr.is_null() {
+        if event_loop_ptr.is_null() {
             DefWindowProcW(hwnd, msg, wparam, lparam)
         } else {
-            Self::wndproc(&*window_ptr, hwnd, msg, wparam, lparam)
+            Self::wndproc(&*event_loop_ptr, hwnd, msg, wparam, lparam)
         }
     }
 
@@ -244,31 +196,76 @@ impl<UserData> EventLoop<UserData> {
     /// might send a different message; if we want to handle that message and
     /// try to modify the [WindowData] through a mutable borrow, the program
     /// will panic with a const/mut borrow conflict.
-    fn wndproc(
-        window: &RefCell<WindowData<UserData>>,
-        hwnd: HWND,
-        msg: u32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
+    fn wndproc(event_loop: &Self, hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        let window_handle = WindowHandle {
+            hwnd: hwnd.0 as _,
+            hinstance: event_loop.hinstance.0 as _,
+        };
+
         match msg {
             WM_CLOSE => {
-                window.borrow_mut().was_close_requested = true;
-                LRESULT::default()
+                event_loop.control.set(event_loop.callback.borrow_mut()(
+                    &event_loop.proxy(),
+                    WindowEvent::CloseRequested { window: window_handle },
+                ));
             }
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
-                let width = lparam.0 as i16;
-                let height = (lparam.0 >> i16::BITS) & 0xFFFF;
-                window.borrow_mut().width = width.try_into().expect("Window width is negative or > 65535");
-                window.borrow_mut().height = height.try_into().expect("Window width is negative or > 65535");
-                LRESULT::default()
+                let width = (lparam.0 as i16)
+                    .try_into()
+                    .expect("Window width is negative or > 65535");
+                let height = ((lparam.0 >> i16::BITS) & 0xFFFF)
+                    .try_into()
+                    .expect("Window height is negative or > 65535");
+
+                // We need to guard against an empty callback
+                event_loop.control.set(event_loop.callback.borrow_mut()(
+                    &event_loop.proxy(),
+                    WindowEvent::Resized {
+                        window: window_handle,
+                        size: PhysicalSize { width, height },
+                    },
+                ));
+            }
+            WM_CREATE => {
+                let mut rect = RECT::default();
+                unsafe { GetWindowRect(hwnd, &mut rect) };
+
+                let width = (rect.right - rect.left)
+                    .try_into()
+                    .expect("Window width is negative or > 65535");
+                let height = (rect.bottom - rect.top)
+                    .try_into()
+                    .expect("Window heigth is negative or > 65535");
+
+                event_loop.control.set(event_loop.callback.borrow_mut()(
+                    &event_loop.proxy(),
+                    WindowEvent::Created {
+                        window: window_handle,
+                        size: PhysicalSize { width, height },
+                    },
+                ));
             }
             WM_DESTROY => {
-                window.borrow_mut().hwnd = HWND::NULL;
-                LRESULT::default()
+                // event_loop.control.set(event_loop.callback.borrow_mut()(
+                //     &event_loop.proxy(),
+                //     WindowEvent::Destroyed { window: window_handle },
+                // ));
+
+                if event_loop.num_windows() == 0 {
+                    unsafe { PostQuitMessage(0) };
+                }
             }
-            _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+            _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        }
+        LRESULT::default()
+    }
+}
+
+impl Drop for EventLoop {
+    fn drop(&mut self) {
+        for window in self.destroy_queue.get_mut().drain(0..) {
+            unsafe { DestroyWindow(HWND(window.hwnd as _)) };
         }
     }
 }
