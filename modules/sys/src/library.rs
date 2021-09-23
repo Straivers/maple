@@ -6,7 +6,9 @@ use crate::platform::library as platform;
 
 #[derive(Debug, Clone)]
 pub enum Error {
+    /// The library could not be loaded from the specified path.
     LibraryNotFound(String),
+    /// The specified symbol could not be found in the library.
     SymbolNotFound(String, String),
 }
 
@@ -40,13 +42,13 @@ impl Library {
         platform::Library::load(path).map(|library| Self { library })
     }
 
+    /// The path that the library was loaded from.
     #[must_use]
     pub fn path(&self) -> &str {
         self.library.path()
     }
 
-    /// Attempts to retrieve a symbol stored within the library, returns `None`
-    /// if it was not found.
+    /// Attempts to retrieve a symbol stored within the library.
     #[must_use]
     pub fn get_symbol(&self, name: &CStr) -> Option<*mut c_void> {
         self.library.get_symbol(name)

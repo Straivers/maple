@@ -98,6 +98,7 @@ impl Context {
         }
     }
 
+    #[must_use]
     pub fn create_or_resize_swapchain(
         &self,
         surface: vk::SurfaceKHR,

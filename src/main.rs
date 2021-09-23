@@ -6,7 +6,10 @@
 // shaders should be recompiled on command during debug
 // maple runner is a debug-only tool right now, can afford runtime compilation
 
-use std::{collections::HashMap, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use clap::{App, Arg};
 use renderer::{Swapchain, TriangleRenderer};
@@ -82,14 +85,21 @@ impl Drop for AppState {
 
 fn run(cli_options: &CliOptions) {
     let mut app_state = AppState::new(cli_options.with_vulkan_validation);
-    let mut min_frame_time = Duration::from_secs(1) / MIN_FRAME_RATE;
+    let min_frame_time = Duration::from_secs(1) / MIN_FRAME_RATE;
 
     let mut event_loop = EventLoop::new(move |proxy, event| {
         match event {
             WindowEvent::Created { window, size } => {
                 println!("Created");
                 let swapchain = app_state.renderer.create_swapchain(window, size);
-                app_state.windows.insert(window, AppWindow { size, swapchain, last_draw: Instant::now() });
+                app_state.windows.insert(
+                    window,
+                    AppWindow {
+                        size,
+                        swapchain,
+                        last_draw: Instant::now(),
+                    },
+                );
             }
             WindowEvent::CloseRequested { window } => {
                 println!("Destroyed");
@@ -109,7 +119,7 @@ fn run(cli_options: &CliOptions) {
                 app_window.last_draw = Instant::now();
 
                 // Keep other windows from locking up whle modalling resizing.
-                for (handle, app_window) in app_state.windows.iter_mut() {
+                for (handle, app_window) in &mut app_state.windows {
                     if *handle != window && Instant::now() - app_window.last_draw >= min_frame_time {
                         app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
                         app_window.last_draw = Instant::now();
@@ -117,15 +127,14 @@ fn run(cli_options: &CliOptions) {
                 }
             }
             WindowEvent::Redraw {} => {
-                for (_, app_window) in app_state.windows.iter_mut() {
+                for app_window in app_state.windows.values_mut() {
                     app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
                     app_window.last_draw = Instant::now();
                 }
 
                 app_state.renderer.end_frame();
             }
-            WindowEvent::Update {} => {
-            }
+            WindowEvent::Update {} => {}
         }
         EventLoopControl::Continue
     });

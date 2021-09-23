@@ -164,14 +164,9 @@ impl EventLoop {
         EventLoopProxy { event_loop: self }
     }
 
+    /// The default-unsafe wndproc callback. Event handling is forwarded to the
+    /// default-safe `wndproc()`.
     #[allow(clippy::similar_names)]
-    /// The default-unsafe wndproc callback. It handles setting up the window's
-    /// data pointer when the window is created, and retrieving it during later
-    /// calls. If the data pointer is valid, control is passed to
-    /// [Self::wndproc].
-    ///
-    /// Note: This function passes control to [Self::wndproc] only if the `msg`
-    /// parameter is associated with a particular window.
     unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if msg == WM_CREATE {
             let cs: &CREATESTRUCTW = std::mem::transmute(lparam);
@@ -189,13 +184,6 @@ impl EventLoop {
 
     /// The default-safe wndproc. It can be assumed that the `window` parameter
     /// is valid and points to the same window as `hwnd`.
-    ///
-    /// We take both [WindowData] and [HWND] here because [DefWindowProcW]
-    /// requires an [HWND] that we'd otherwise have to borrow from the
-    /// [WindowData]'s [RefCell]. This is a problem becuase [DefWindowProcW]
-    /// might send a different message; if we want to handle that message and
-    /// try to modify the [WindowData] through a mutable borrow, the program
-    /// will panic with a const/mut borrow conflict.
     fn wndproc(event_loop: &Self, hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         let window_handle = WindowHandle {
             hwnd: hwnd.0 as _,
