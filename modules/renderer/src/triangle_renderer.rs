@@ -2,6 +2,7 @@ use ash::vk;
 use std::{collections::HashMap, ffi::CStr, rc::Rc};
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
+use utils::array_vec::ArrayVec;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
@@ -55,14 +56,7 @@ impl TriangleRenderer {
             return;
         };
 
-        let command_pool = swapchain.command_pools[swapchain.current_frame];
-        self.vulkan.reset_command_pool(command_pool, false);
-
-        let command_buffer = {
-            let mut buffer = [vk::CommandBuffer::default()];
-            self.vulkan.allocate_command_buffers(command_pool, &mut buffer);
-            buffer[0]
-        };
+        self.vulkan.reset_command_buffer(frame.command_buffer, false);
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
@@ -71,20 +65,20 @@ impl TriangleRenderer {
 
         {
             let begin_info = vk::CommandBufferBeginInfo::default();
-            unsafe { self.vulkan.device.begin_command_buffer(command_buffer, &begin_info) }.expect("Out of memory");
+            unsafe { self.vulkan.device.begin_command_buffer(frame.command_buffer, &begin_info) }.expect("Out of memory");
         }
 
         swapchain.presentation_effect.apply(
             &self.vulkan,
             swapchain.framebuffers[image_index as usize],
             viewport_rect,
-            command_buffer,
+            frame.command_buffer,
         );
 
         unsafe {
             self.vulkan
                 .device
-                .end_command_buffer(command_buffer)
+                .end_command_buffer(frame.command_buffer)
                 .expect("Out of memory");
         }
 
@@ -98,7 +92,7 @@ impl TriangleRenderer {
                 signal_semaphore_count: 1,
                 p_signal_semaphores: &frame.present_semaphore,
                 command_buffer_count: 1,
-                p_command_buffers: &command_buffer,
+                p_command_buffers: &frame.command_buffer,
             };
 
             self.vulkan.reset_fences(&[frame.submit_fence]);

@@ -151,7 +151,15 @@ impl Context {
             }
         };
 
-        let min_images = PREFERRED_SWAPCHAIN_LENGTH.clamp(capabilities.min_image_count, capabilities.max_image_count);
+        let min_images = if capabilities.max_image_count == 0 {
+            if PREFERRED_SWAPCHAIN_LENGTH > capabilities.min_image_count {
+                PREFERRED_SWAPCHAIN_LENGTH
+            } else {
+                capabilities.min_image_count
+            }
+        } else {
+            PREFERRED_SWAPCHAIN_LENGTH.clamp(capabilities.min_image_count, capabilities.max_image_count)
+        };
 
         let mut create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(surface)

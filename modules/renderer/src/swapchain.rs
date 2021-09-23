@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use ash::vk;
+use utils::array_vec::ArrayVec;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
@@ -10,9 +11,10 @@ pub struct FrameInFlight {
     pub was_resized: bool,
     pub extent: vk::Extent2D,
     pub submit_fence: vk::Fence,
-    pub command_pool: vk::CommandPool,
     pub acquire_semaphore: vk::Semaphore,
     pub present_semaphore: vk::Semaphore,
+    pub command_pool: vk::CommandPool,
+    pub command_buffer: vk::CommandBuffer,
 }
 
 pub struct Swapchain {
@@ -25,7 +27,8 @@ pub struct Swapchain {
     pub sync_acquire: [vk::Semaphore; FRAMES_IN_FLIGHT],
     pub sync_present: [vk::Semaphore; FRAMES_IN_FLIGHT],
     pub sync_fence: [vk::Fence; FRAMES_IN_FLIGHT],
-    pub command_pools: [vk::CommandPool; FRAMES_IN_FLIGHT],
+    pub command_pool: vk::CommandPool,
+    command_buffers: [ArrayVec<vk::CommandBuffer, 1>; FRAMES_IN_FLIGHT],
 }
 
 impl Swapchain {
@@ -76,6 +79,13 @@ impl Swapchain {
             buffer
         };
 
+        let command_pool = context.create_graphics_command_pool(true, true);
+        let mut command_buffers = [ArrayVec::new(), ArrayVec::new()];
+        for buffers in &mut command_buffers {
+            unsafe { buffers.set_len(1) };
+            context.allocate_command_buffers(command_pool, buffers);
+        }
+
         Swapchain {
             current_frame: 0,
             surface,
@@ -86,10 +96,8 @@ impl Swapchain {
             sync_acquire: [context.get_or_create_semaphore(), context.get_or_create_semaphore()],
             sync_present: [context.get_or_create_semaphore(), context.get_or_create_semaphore()],
             sync_fence: [context.get_or_create_fence(true), context.get_or_create_fence(true)],
-            command_pools: [
-                context.create_graphics_command_pool(true),
-                context.create_graphics_command_pool(true),
-            ],
+            command_pool,
+            command_buffers,
         }
     }
 
@@ -108,11 +116,13 @@ impl Swapchain {
         }
 
         for i in 0..FRAMES_IN_FLIGHT {
-            context.destroy_command_pool(self.command_pools[i]);
             context.free_semaphore(self.sync_acquire[i]);
             context.free_semaphore(self.sync_present[i]);
             context.free_fence(self.sync_fence[i]);
+            context.free_command_buffers(self.command_pool, &self.command_buffers[i]);
         }
+
+        context.destroy_command_pool(self.command_pool);
     }
 
     pub fn resize(
@@ -124,10 +134,6 @@ impl Swapchain {
         let framebuffer_extent = physical_size_to_extent(fb_size);
 
         let _ = context.wait_for_fences(&self.sync_fence, u64::MAX);
-
-        for pool in &self.command_pools {
-            context.reset_command_pool(*pool, false);
-        }
 
         self.swapchain.resize(context, self.surface, framebuffer_extent);
 
@@ -194,9 +200,10 @@ impl Swapchain {
             was_resized: self.swapchain.image_size != extent,
             extent,
             submit_fence: self.sync_fence[self.current_frame],
-            command_pool: self.command_pools[self.current_frame],
             acquire_semaphore: self.sync_acquire[self.current_frame],
             present_semaphore: self.sync_present[self.current_frame],
+            command_pool: self.command_pool,
+            command_buffer: self.command_buffers[self.current_frame][0],
         }
     }
 }

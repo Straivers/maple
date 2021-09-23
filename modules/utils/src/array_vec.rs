@@ -73,6 +73,15 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
+    pub fn clear(&mut self) {
+        for element in self.as_mut_slice() {
+            unsafe {
+                std::ptr::drop_in_place(element);
+            }
+        }
+        self.length = 0;
+    }
+
     /// Consumes the vector and calls a closure on every element, allowing it to
     /// drop at the end of the closure.
     pub fn empty<F>(mut self, mut f: F)

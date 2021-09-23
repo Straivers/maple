@@ -336,11 +336,17 @@ impl Context {
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
-    pub fn create_graphics_command_pool(&self, transient: bool) -> vk::CommandPool {
-        let mut create_info = vk::CommandPoolCreateInfo::builder().queue_family_index(self.gpu.graphics_queue_index);
+    pub fn create_graphics_command_pool(&self, transient: bool, reset_individual: bool) -> vk::CommandPool {
+        let mut create_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(self.gpu.graphics_queue_index)
+            .build();
 
         if transient {
-            create_info = create_info.flags(vk::CommandPoolCreateFlags::TRANSIENT);
+            create_info.flags |= vk::CommandPoolCreateFlags::TRANSIENT;
+        }
+
+        if reset_individual {
+            create_info.flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
         }
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
@@ -381,6 +387,26 @@ impl Context {
                 .allocate_command_buffers(self.device.handle(), &alloc_info, buffers.as_mut_ptr())
                 .result()
                 .expect("Out of memory");
+        }
+    }
+
+    pub fn free_command_buffers(&self, command_pool: vk::CommandPool, command_buffers: &[vk::CommandBuffer]) {
+        unsafe {
+            self.device.free_command_buffers(command_pool, command_buffers);
+        }
+    }
+
+    pub fn reset_command_buffer(&self, buffer: vk::CommandBuffer, release_memory: bool) {
+        let mut flags = Default::default();
+
+        if release_memory {
+            flags |= vk::CommandBufferResetFlags::RELEASE_RESOURCES;
+        }
+
+        unsafe {
+            self.device
+                .reset_command_buffer(buffer, flags)
+                .expect("Out of device memory");
         }
     }
 
