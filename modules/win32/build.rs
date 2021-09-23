@@ -22,6 +22,7 @@ fn build_apis() {
                 WindowsAndMessaging::{
                     // Constants
                     CW_USEDEFAULT, IDC_ARROW, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE, WM_NULL,
+                    WM_ERASEBKGND,
                     // Structs
                     CREATESTRUCTW, MSG, WINDOW_EX_STYLE, WNDCLASSW,
                     // Functions

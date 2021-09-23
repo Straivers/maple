@@ -12,7 +12,8 @@ use win32::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
         LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_HIDE,
-        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_QUIT, WM_SIZE, WNDCLASSW,
+        WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -235,14 +236,15 @@ impl EventLoop {
                 ));
             }
             WM_DESTROY => {
-                // event_loop.control.set(event_loop.callback.borrow_mut()(
-                //     &event_loop.proxy(),
-                //     WindowEvent::Destroyed { window: window_handle },
-                // ));
-
                 if event_loop.num_windows() == 0 {
                     unsafe { PostQuitMessage(0) };
                 }
+            }
+            WM_ERASEBKGND => {
+                /* No op, as recommended here:
+                  https://stackoverflow.com/questions/53000291/how-to-smooth-ugly-jitter-flicker-jumping-when-resizing-windows-especially-drag
+                */
+                return LRESULT(1);
             }
             _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }
