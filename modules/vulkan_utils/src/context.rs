@@ -53,6 +53,8 @@ pub struct Context {
     library: EntryCustom<Library>,
     instance: Instance,
     pub(crate) gpu: Gpu,
+    pub gpu_memory_info: vk::PhysicalDeviceMemoryProperties,
+
     pub device: Device,
 
     pub graphics_queue: vk::Queue,
@@ -121,6 +123,8 @@ impl Context {
 
         let gpu = select_physical_device(&instance, &os_surface_api).expect("No supported GPU found");
 
+        let gpu_memory_info = unsafe { instance.get_physical_device_memory_properties(gpu.handle) };
+
         let device = {
             let priorities = [1.0];
             let mut queue_create_infos = ArrayVec::<vk::DeviceQueueCreateInfo, 2>::new();
@@ -164,6 +168,7 @@ impl Context {
             library,
             instance,
             gpu,
+            gpu_memory_info,
             device,
             graphics_queue,
             present_queue,
@@ -448,6 +453,71 @@ impl Context {
     pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
         unsafe {
             self.device.destroy_render_pass(renderpass, None);
+        }
+    }
+
+    pub fn create_buffer(&self, create_info: &vk::BufferCreateInfo) -> vk::Buffer {
+        unsafe { self.device.create_buffer(create_info, None).expect("Out of memory") }
+    }
+
+    pub fn destroy_buffer(&self, buffer: vk::Buffer) {
+        unsafe {
+            self.device.destroy_buffer(buffer, None);
+        }
+    }
+
+    pub fn buffer_memory_requirements(&self, buffer: vk::Buffer) -> vk::MemoryRequirements {
+        unsafe { self.device.get_buffer_memory_requirements(buffer) }
+    }
+
+    pub fn find_memory_type(&self, type_filter: u32, needed_properties: vk::MemoryPropertyFlags) -> Option<u32> {
+        for i in 0..self.gpu_memory_info.memory_type_count {
+            if (type_filter & (1 << i)) != 0
+                && self.gpu_memory_info.memory_types[i as usize]
+                    .property_flags
+                    .contains(needed_properties)
+            {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    pub fn allocate(&self, alloc_info: &vk::MemoryAllocateInfo) -> vk::DeviceMemory {
+        unsafe { self.device.allocate_memory(alloc_info, None).expect("Out of memory") }
+    }
+
+    pub fn free(&self, memory: vk::DeviceMemory) {
+        unsafe {
+            self.device.free_memory(memory, None);
+        }
+    }
+
+    pub fn bind(&self, buffer: vk::Buffer, memory: vk::DeviceMemory, offset: u64) {
+        unsafe {
+            self.device
+                .bind_buffer_memory(buffer, memory, offset)
+                .expect("Out of memory");
+        }
+    }
+
+    pub fn map_typed<T>(&self, memory: vk::DeviceMemory, offset: u64, size: u64, flags: vk::MemoryMapFlags) -> &mut [T] {
+        let ptr = unsafe { self.device.map_memory(memory, offset, size, flags).expect("Memory map failed") };
+        let type_layout = std::alloc::Layout::new::<T>();
+
+        let slice_length = size as usize / type_layout.size();
+
+        if offset > 0 {
+            assert!(type_layout.align() as u64 % offset == 0);
+        }
+
+        unsafe { std::slice::from_raw_parts_mut(ptr as _, slice_length) }
+    }
+
+    pub fn unmap(&self, memory: vk::DeviceMemory) {
+        unsafe {
+            self.device.unmap_memory(memory);
         }
     }
 }

@@ -12,7 +12,9 @@ use std::{
 };
 
 use clap::{App, Arg};
-use renderer::{Swapchain, TriangleRenderer};
+
+use renderer::{color::Color, geometry::float2, vertex::Vertex, Swapchain, TriangleRenderer};
+
 use sys::{
     dpi::PhysicalSize,
     window::{EventLoop, EventLoopControl},
@@ -84,6 +86,21 @@ impl Drop for AppState {
 }
 
 fn run(cli_options: &CliOptions) {
+    let triangle = [
+        Vertex {
+            position: float2(0.0, -0.5),
+            color: Color::normalized(1.0, 0.0, 0.0, 1.0),
+        },
+        Vertex {
+            position: float2(0.5, 0.5),
+            color: Color::normalized(0.0, 1.0, 0.0, 1.0),
+        },
+        Vertex {
+            position: float2(-0.5, 0.5),
+            color: Color::normalized(0.0, 0.0, 1.0, 1.0),
+        },
+    ];
+
     let mut app_state = AppState::new(cli_options.with_vulkan_validation);
     let min_frame_time = Duration::from_secs(1) / MIN_FRAME_RATE;
 
@@ -115,20 +132,20 @@ fn run(cli_options: &CliOptions) {
             WindowEvent::Resized { window, size } => {
                 let app_window = app_state.windows.get_mut(&window).unwrap();
                 app_window.size = size;
-                app_state.renderer.render_to(&mut app_window.swapchain, size);
+                app_state.renderer.render_to(&mut app_window.swapchain, size, &triangle);
                 app_window.last_draw = Instant::now();
 
                 // Keep other windows from locking up whle modalling resizing.
                 for (handle, app_window) in &mut app_state.windows {
                     if *handle != window && Instant::now() - app_window.last_draw >= min_frame_time {
-                        app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
+                        app_state.renderer.render_to(&mut app_window.swapchain, app_window.size, &triangle);
                         app_window.last_draw = Instant::now();
                     }
                 }
             }
             WindowEvent::Redraw {} => {
                 for app_window in app_state.windows.values_mut() {
-                    app_state.renderer.render_to(&mut app_window.swapchain, app_window.size);
+                    app_state.renderer.render_to(&mut app_window.swapchain, app_window.size, &triangle);
                     app_window.last_draw = Instant::now();
                 }
 

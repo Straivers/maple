@@ -6,9 +6,10 @@ use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
 use crate::swapchain::Swapchain;
+use crate::vertex::Vertex;
 
-pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_tri_vert.spv");
-pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_tri_frag.spv");
+pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
+pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_frag.spv");
 
 pub struct TriangleRenderer {
     vulkan: vulkan_utils::Context,
@@ -35,7 +36,7 @@ impl TriangleRenderer {
         self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut Swapchain, target_size: PhysicalSize) {
+    pub fn render_to(&mut self, swapchain: &mut Swapchain, target_size: PhysicalSize, vertices: &[Vertex]) {
         let frame = swapchain.frame_in_flight(target_size);
 
         if frame.extent == vk::Extent2D::default() {
@@ -54,6 +55,14 @@ impl TriangleRenderer {
             swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
             return;
         };
+
+        // TODO: This allocates memory every single frame and doesn't free it. Move this into swapchain... I guess
+        let (vertex_buffer, vertex_memory, vertex_buffer_size) = load_vertex_buffer(&self.vulkan, vertices);
+        {
+            let slice = self.vulkan.map_typed::<Vertex>(vertex_memory, 0, vertex_buffer_size, vk::MemoryMapFlags::empty());
+            slice[0 .. vertices.len()].copy_from_slice(vertices);
+            self.vulkan.unmap(vertex_memory);
+        }
 
         self.vulkan.reset_command_buffer(frame.command_buffer, false);
 
@@ -77,6 +86,8 @@ impl TriangleRenderer {
             swapchain.framebuffers[image_index as usize],
             viewport_rect,
             frame.command_buffer,
+            vertices.len() as u32,
+            vertex_buffer,
         );
 
         unsafe {
@@ -210,6 +221,8 @@ impl Effect for TriangleEffect {
         target: vk::Framebuffer,
         target_rect: vk::Rect2D,
         cmd: vk::CommandBuffer,
+        num_vertices: u32,
+        vertex_buffer: vk::Buffer,
     ) {
         {
             let clear_values = [vk::ClearValue {
@@ -235,6 +248,11 @@ impl Effect for TriangleEffect {
             context
                 .device
                 .cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            
+            let vertex_buffers = [vertex_buffer];
+            let offsets = [0];
+
+            context.device.cmd_bind_vertex_buffers(cmd, 0, &vertex_buffers, &offsets);
         }
 
         {
@@ -252,7 +270,7 @@ impl Effect for TriangleEffect {
 
         unsafe {
             context.device.cmd_set_scissor(cmd, 0, &[target_rect]);
-            context.device.cmd_draw(cmd, 3, 1, 0, 0);
+            context.device.cmd_draw(cmd, num_vertices, 1, 0, 0);
             context.device.cmd_end_render_pass(cmd);
         }
     }
@@ -317,7 +335,11 @@ fn create_pipeline(
             .build(),
     ];
 
-    let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder();
+    let vertex_binding_descriptions = [Vertex::BINDING_DESCRIPTION];
+    let attribute_binding_descriptions = Vertex::ATTRIBUTE_DESCRIPTION;
+    let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
+        .vertex_binding_descriptions(&vertex_binding_descriptions)
+        .vertex_attribute_descriptions(&attribute_binding_descriptions);
 
     let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
@@ -372,4 +394,39 @@ fn create_pipeline(
         .subpass(0);
 
     context.create_graphics_pipeline(&create_info)
+}
+
+fn load_vertex_buffer(context: &vulkan_utils::Context, vertices: &[Vertex]) -> (vk::Buffer, vk::DeviceMemory, u64) {
+    let create_info = vk::BufferCreateInfo {
+        s_type: vk::StructureType::BUFFER_CREATE_INFO,
+        p_next: std::ptr::null(),
+        flags: vk::BufferCreateFlags::empty(),
+        size: std::mem::size_of_val(vertices) as u64,
+        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+        sharing_mode: vk::SharingMode::EXCLUSIVE,
+        queue_family_index_count: 0,
+        p_queue_family_indices: std::ptr::null(),
+    };
+
+    let buffer = context.create_buffer(&create_info);
+
+    let memory_requirements = context.buffer_memory_requirements(buffer);
+    let memory_type_index = context
+        .find_memory_type(
+            memory_requirements.memory_type_bits,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )
+        .unwrap();
+
+    let alloc_info = vk::MemoryAllocateInfo {
+        s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+        p_next: std::ptr::null(),
+        allocation_size: memory_requirements.size,
+        memory_type_index,
+    };
+
+    let buffer_memory = context.allocate(&alloc_info);
+    context.bind(buffer, buffer_memory, 0);
+
+    (buffer, buffer_memory, memory_requirements.size)
 }
