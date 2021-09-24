@@ -13,7 +13,7 @@ use std::{
 
 use clap::{App, Arg};
 
-use renderer::{color::Color, geometry::float2, vertex::Vertex, Swapchain, TriangleRenderer};
+use renderer::{color::Color, geometry::float2, vertex::Vertex, WindowContext, TriangleRenderer};
 
 use sys::{
     dpi::PhysicalSize,
@@ -57,7 +57,7 @@ fn main() {
 
 struct AppWindow {
     size: PhysicalSize,
-    swapchain: Swapchain,
+    swapchain: WindowContext,
     last_draw: Instant,
 }
 
@@ -138,14 +138,18 @@ fn run(cli_options: &CliOptions) {
                 // Keep other windows from locking up whle modalling resizing.
                 for (handle, app_window) in &mut app_state.windows {
                     if *handle != window && Instant::now() - app_window.last_draw >= min_frame_time {
-                        app_state.renderer.render_to(&mut app_window.swapchain, app_window.size, &triangle);
+                        app_state
+                            .renderer
+                            .render_to(&mut app_window.swapchain, app_window.size, &triangle);
                         app_window.last_draw = Instant::now();
                     }
                 }
             }
             WindowEvent::Redraw {} => {
                 for app_window in app_state.windows.values_mut() {
-                    app_state.renderer.render_to(&mut app_window.swapchain, app_window.size, &triangle);
+                    app_state
+                        .renderer
+                        .render_to(&mut app_window.swapchain, app_window.size, &triangle);
                     app_window.last_draw = Instant::now();
                 }
 

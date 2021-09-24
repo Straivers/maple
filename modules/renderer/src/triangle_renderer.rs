@@ -5,7 +5,7 @@ use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
-use crate::swapchain::Swapchain;
+use crate::window_context::{WindowContext, physical_size_to_extent};
 use crate::vertex::Vertex;
 
 pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
@@ -24,11 +24,11 @@ impl TriangleRenderer {
         Self { vulkan, effect_base }
     }
 
-    pub fn create_swapchain(&mut self, window_handle: WindowHandle, framebuffer_size: PhysicalSize) -> Swapchain {
-        Swapchain::new(&mut self.vulkan, window_handle, framebuffer_size, &mut self.effect_base)
+    pub fn create_swapchain(&mut self, window_handle: WindowHandle, framebuffer_size: PhysicalSize) -> WindowContext {
+        WindowContext::new(&mut self.vulkan, window_handle, framebuffer_size, &mut self.effect_base)
     }
 
-    pub fn destroy_swapchain(&mut self, swapchain: Swapchain) {
+    pub fn destroy_swapchain(&mut self, swapchain: WindowContext) {
         swapchain.destroy(&mut self.vulkan)
     }
 
@@ -36,31 +36,23 @@ impl TriangleRenderer {
         self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut Swapchain, target_size: PhysicalSize, vertices: &[Vertex]) {
-        let frame = swapchain.frame_in_flight(target_size);
-
-        if frame.extent == vk::Extent2D::default() {
+    pub fn render_to(&mut self, swapchain: &mut WindowContext, target_size: PhysicalSize, vertices: &[Vertex]) {
+        if target_size == (PhysicalSize { width: 0, height: 0 }) {
             return;
         }
 
-        if frame.was_resized {
-            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
-        }
+        let target_extent = physical_size_to_extent(target_size);
 
-        let _ = self.vulkan.wait_for_fences(&[frame.submit_fence], u64::MAX);
+        let (frame, frame_sync) = swapchain.frame_in_flight(&mut self.vulkan, target_size, &mut self.effect_base).unwrap();
 
-        let image_index = if let Some(index) = swapchain.swapchain.get_image(&self.vulkan, frame.acquire_semaphore) {
-            index
-        } else {
-            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
-            return;
-        };
-
-        // TODO: This allocates memory every single frame and doesn't free it. Move this into swapchain... I guess
+        // TODO: This allocates memory every single frame and doesn't free it.
+        // Move this into swapchain... I guess
         let (vertex_buffer, vertex_memory, vertex_buffer_size) = load_vertex_buffer(&self.vulkan, vertices);
         {
-            let slice = self.vulkan.map_typed::<Vertex>(vertex_memory, 0, vertex_buffer_size, vk::MemoryMapFlags::empty());
-            slice[0 .. vertices.len()].copy_from_slice(vertices);
+            let slice =
+                self.vulkan
+                    .map_typed::<Vertex>(vertex_memory, 0, vertex_buffer_size, vk::MemoryMapFlags::empty());
+            slice[0..vertices.len()].copy_from_slice(vertices);
             self.vulkan.unmap(vertex_memory);
         }
 
@@ -68,7 +60,7 @@ impl TriangleRenderer {
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: frame.extent,
+            extent: target_extent,
         };
 
         {
@@ -83,7 +75,7 @@ impl TriangleRenderer {
 
         swapchain.presentation_effect.apply(
             &self.vulkan,
-            swapchain.framebuffers[image_index as usize],
+            frame.frame_buffer,
             viewport_rect,
             frame.command_buffer,
             vertices.len() as u32,
@@ -102,20 +94,20 @@ impl TriangleRenderer {
                 s_type: vk::StructureType::SUBMIT_INFO,
                 p_next: std::ptr::null(),
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &frame.acquire_semaphore,
+                p_wait_semaphores: &frame_sync.acquire_semaphore,
                 p_wait_dst_stage_mask: &vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 signal_semaphore_count: 1,
-                p_signal_semaphores: &frame.present_semaphore,
+                p_signal_semaphores: &frame_sync.present_semaphore,
                 command_buffer_count: 1,
                 p_command_buffers: &frame.command_buffer,
             };
 
-            self.vulkan.reset_fences(&[frame.submit_fence]);
-            self.vulkan.submit_to_graphics_queue(&[submit_info], frame.submit_fence);
+            self.vulkan.reset_fences(&[frame_sync.fence]);
+            self.vulkan.submit_to_graphics_queue(&[submit_info], frame_sync.fence);
         }
 
-        if swapchain.swapchain.present(&self.vulkan, &[frame.present_semaphore]) {
-            swapchain.resize(target_size, &mut self.vulkan, &mut self.effect_base);
+        if swapchain.swapchain.present(&self.vulkan, &[frame_sync.present_semaphore]) {
+            swapchain.resize(&mut self.vulkan, target_size, &mut self.effect_base);
         }
 
         swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
@@ -248,11 +240,13 @@ impl Effect for TriangleEffect {
             context
                 .device
                 .cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-            
+
             let vertex_buffers = [vertex_buffer];
             let offsets = [0];
 
-            context.device.cmd_bind_vertex_buffers(cmd, 0, &vertex_buffers, &offsets);
+            context
+                .device
+                .cmd_bind_vertex_buffers(cmd, 0, &vertex_buffers, &offsets);
         }
 
         {

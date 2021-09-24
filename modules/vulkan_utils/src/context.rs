@@ -435,13 +435,13 @@ impl Context {
     }
 
     #[must_use]
-    pub fn create_framebuffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
+    pub fn create_frame_buffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
         unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
     }
 
-    pub fn destroy_framebuffer(&self, image: vk::Framebuffer) {
+    pub fn destroy_frame_buffer(&self, framebuffer: vk::Framebuffer) {
         unsafe {
-            self.device.destroy_framebuffer(image, None);
+            self.device.destroy_framebuffer(framebuffer, None);
         }
     }
 
@@ -502,8 +502,19 @@ impl Context {
         }
     }
 
-    pub fn map_typed<T>(&self, memory: vk::DeviceMemory, offset: u64, size: u64, flags: vk::MemoryMapFlags) -> &mut [T] {
-        let ptr = unsafe { self.device.map_memory(memory, offset, size, flags).expect("Memory map failed") };
+    #[allow(clippy::mut_from_ref)]
+    pub fn map_typed<T>(
+        &self,
+        memory: vk::DeviceMemory,
+        offset: u64,
+        size: u64,
+        flags: vk::MemoryMapFlags,
+    ) -> &mut [T] {
+        let ptr = unsafe {
+            self.device
+                .map_memory(memory, offset, size, flags)
+                .expect("Memory map failed")
+        };
         let type_layout = std::alloc::Layout::new::<T>();
 
         let slice_length = size as usize / type_layout.size();
