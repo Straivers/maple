@@ -2,7 +2,6 @@ use ash::vk;
 use std::{collections::HashMap, ffi::CStr, rc::Rc};
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
-use utils::array_vec::ArrayVec;
 
 use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
@@ -65,7 +64,12 @@ impl TriangleRenderer {
 
         {
             let begin_info = vk::CommandBufferBeginInfo::default();
-            unsafe { self.vulkan.device.begin_command_buffer(frame.command_buffer, &begin_info) }.expect("Out of memory");
+            unsafe {
+                self.vulkan
+                    .device
+                    .begin_command_buffer(frame.command_buffer, &begin_info)
+            }
+            .expect("Out of memory");
         }
 
         swapchain.presentation_effect.apply(
