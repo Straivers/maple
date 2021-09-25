@@ -1,12 +1,11 @@
 use ash::vk;
-use std::{collections::HashMap, ffi::CStr, rc::Rc};
+use std::{collections::HashMap, ffi::CStr};
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
-use crate::constants::FRAMES_IN_FLIGHT;
 use crate::effect::{Effect, EffectBase};
-use crate::window_context::{WindowContext, physical_size_to_extent};
 use crate::vertex::Vertex;
+use crate::window_context::{physical_size_to_extent, WindowContext};
 
 pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
 pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_frag.spv");
@@ -43,8 +42,11 @@ impl TriangleRenderer {
 
         let target_extent = physical_size_to_extent(target_size);
 
-        let (frame, frame_sync) = swapchain.frame_in_flight(&mut self.vulkan, target_size, &mut self.effect_base).unwrap();
+        let (frame, frame_sync) = swapchain
+            .next_frame(&mut self.vulkan, target_size, &mut self.effect_base)
+            .unwrap();
 
+        // copy_to_buffer(&self.vulkan, frame.vertex_buffer, frame.vertex_buffer_size, vertices);
         // TODO: This allocates memory every single frame and doesn't free it.
         // Move this into swapchain... I guess
         let (vertex_buffer, vertex_memory, vertex_buffer_size) = load_vertex_buffer(&self.vulkan, vertices);
@@ -55,8 +57,6 @@ impl TriangleRenderer {
             slice[0..vertices.len()].copy_from_slice(vertices);
             self.vulkan.unmap(vertex_memory);
         }
-
-        self.vulkan.reset_command_buffer(frame.command_buffer, false);
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
@@ -73,7 +73,7 @@ impl TriangleRenderer {
             .expect("Out of memory");
         }
 
-        swapchain.presentation_effect.apply(
+        self.effect_base.get_effect(&self.vulkan, frame.image_format).apply(
             &self.vulkan,
             frame.frame_buffer,
             viewport_rect,
@@ -106,11 +106,7 @@ impl TriangleRenderer {
             self.vulkan.submit_to_graphics_queue(&[submit_info], frame_sync.fence);
         }
 
-        if swapchain.swapchain.present(&self.vulkan, &[frame_sync.present_semaphore]) {
-            swapchain.resize(&mut self.vulkan, target_size, &mut self.effect_base);
-        }
-
-        swapchain.current_frame = (swapchain.current_frame + 1) % FRAMES_IN_FLIGHT;
+        swapchain.present(&mut self.vulkan);
     }
 }
 
@@ -122,10 +118,11 @@ impl Drop for TriangleRenderer {
 
 #[derive(Default)]
 struct TriangleEffectBase {
+    generation: u64,
     vertex_shader: vk::ShaderModule,
     fragment_shader: vk::ShaderModule,
     pipeline_layout: vk::PipelineLayout,
-    effects: HashMap<vk::Format, Rc<TriangleEffect>>,
+    effects: HashMap<vk::Format, TriangleEffect>,
 }
 
 impl TriangleEffectBase {
@@ -139,6 +136,7 @@ impl TriangleEffectBase {
         };
 
         Self {
+            generation: 0,
             vertex_shader,
             fragment_shader,
             pipeline_layout,
@@ -149,8 +147,11 @@ impl TriangleEffectBase {
 
 impl EffectBase for TriangleEffectBase {
     fn cleanup(&mut self, context: &vulkan_utils::Context) {
+        self.generation += 1;
+
+        let generation = self.generation;
         self.effects.retain(|_, effect| {
-            let keep = Rc::strong_count(effect) > 1;
+            let keep = effect.generation + 2 >= generation;
             if !keep {
                 context.destroy_render_pass(effect.render_pass);
                 context.destroy_pipeline(effect.pipeline);
@@ -171,35 +172,34 @@ impl EffectBase for TriangleEffectBase {
         context.destroy_pipeline_layout(self.pipeline_layout);
     }
 
-    fn get_effect(&mut self, context: &vulkan_utils::Context, output_format: vk::Format) -> Rc<dyn Effect> {
-        if let Some(effect) = self.effects.get(&output_format) {
-            effect.clone()
-        } else {
-            let effect = Rc::new(TriangleEffect::new(self, context, output_format));
-            self.effects.insert(output_format, effect.clone());
-            effect
-        }
+    fn get_effect(&mut self, context: &vulkan_utils::Context, output_format: vk::Format) -> &dyn Effect {
+        // These are copied out so that `self` doesn't have to be borrowed in
+        // `or_insert_with()`
+        let generation = self.generation;
+        let vertex_shader = self.vertex_shader;
+        let fragment_shader = self.fragment_shader;
+        let pipeline_layout = self.pipeline_layout;
+
+        let entry = self.effects.entry(output_format).or_insert_with(|| {
+            let render_pass = create_renderpass(context, output_format);
+            let pipeline = create_pipeline(context, vertex_shader, fragment_shader, render_pass, pipeline_layout);
+
+            TriangleEffect {
+                render_pass,
+                pipeline,
+                generation,
+            }
+        });
+
+        entry.generation = self.generation;
+        entry
     }
 }
 
 struct TriangleEffect {
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
-}
-
-impl TriangleEffect {
-    fn new(base: &TriangleEffectBase, context: &vulkan_utils::Context, output_format: vk::Format) -> Self {
-        let render_pass = create_renderpass(context, output_format);
-        let pipeline = create_pipeline(
-            context,
-            base.vertex_shader,
-            base.fragment_shader,
-            render_pass,
-            base.pipeline_layout,
-        );
-
-        Self { render_pass, pipeline }
-    }
+    generation: u64,
 }
 
 impl Effect for TriangleEffect {

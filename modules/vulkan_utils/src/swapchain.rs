@@ -20,8 +20,7 @@ pub struct SwapchainData {
 
     /// The images used by the swapchain.
     pub images: Vec<vk::Image>,
-
-    image_index: Option<u32>,
+    // image_index: Option<u32>,
 }
 
 impl SwapchainData {
@@ -65,14 +64,6 @@ impl SwapchainData {
         unsafe {
             context.swapchain_api.destroy_swapchain(self.handle, None);
         }
-    }
-
-    pub fn get_image(&mut self, context: &Context, acquire_semaphore: vk::Semaphore) -> Option<u32> {
-        context.get_swapchain_image(self, acquire_semaphore)
-    }
-
-    pub fn present(&mut self, context: &Context, wait_semaphores: &[vk::Semaphore]) -> bool {
-        context.present_swapchain_image(self, wait_semaphores)
     }
 
     pub fn resize(&mut self, context: &Context, surface: vk::SurfaceKHR, extent: vk::Extent2D) {
@@ -201,7 +192,7 @@ impl Context {
             color_space: format.color_space,
             present_mode,
             images: self.get_swapchain_images(handle, old_images),
-            image_index: None,
+            // image_index: None,
         }
     }
 
@@ -238,14 +229,15 @@ impl Context {
         buffer
     }
 
-    fn get_swapchain_image(&self, swapchain: &mut SwapchainData, acquire_semaphore: vk::Semaphore) -> Option<u32> {
+    pub fn get_swapchain_image(&self, swapchain: &SwapchainData, acquire_semaphore: vk::Semaphore) -> Option<u32> {
         match unsafe {
             self.swapchain_api
                 .acquire_next_image(swapchain.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
         } {
             Ok((index, _)) => {
-                swapchain.image_index = Some(index);
-                swapchain.image_index
+                // swapchain.image_index = Some(index);
+                // swapchain.image_index
+                Some(index)
             }
             Err(vkr) => match vkr {
                 vk::Result::ERROR_OUT_OF_DATE_KHR => None,
@@ -254,10 +246,14 @@ impl Context {
         }
     }
 
-    fn present_swapchain_image(&self, swapchain: &mut SwapchainData, wait_semaphores: &[vk::Semaphore]) -> bool {
+    pub fn present_swapchain_image(
+        &self,
+        swapchain: &SwapchainData,
+        wait_semaphores: &[vk::Semaphore],
+        index: u32,
+    ) -> bool {
         let swapchains = [swapchain.handle];
-        let indices = [swapchain.image_index.expect("Did not acquire image before presenting")];
-        swapchain.image_index = None;
+        let indices = [index];
 
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(wait_semaphores)

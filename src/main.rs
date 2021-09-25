@@ -13,7 +13,7 @@ use std::{
 
 use clap::{App, Arg};
 
-use renderer::{color::Color, geometry::float2, vertex::Vertex, WindowContext, TriangleRenderer};
+use renderer::{color::Color, geometry::float2, vertex::Vertex, TriangleRenderer, WindowContext};
 
 use sys::{
     dpi::PhysicalSize,

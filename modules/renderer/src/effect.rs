@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use ash::vk;
 
 pub trait Effect {
@@ -20,5 +18,5 @@ pub trait EffectBase {
 
     fn destroy(self, context: &vulkan_utils::Context);
 
-    fn get_effect(&mut self, context: &vulkan_utils::Context, format: vk::Format) -> Rc<dyn Effect>;
+    fn get_effect(&mut self, context: &vulkan_utils::Context, format: vk::Format) -> &dyn Effect;
 }
