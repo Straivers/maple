@@ -1,4 +1,5 @@
 use ash::vk;
+use std::convert::TryInto;
 use std::{collections::HashMap, ffi::CStr};
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
@@ -23,11 +24,15 @@ impl TriangleRenderer {
         Self { vulkan, effect_base }
     }
 
-    pub fn create_swapchain(&mut self, window_handle: WindowHandle, framebuffer_size: PhysicalSize) -> WindowContext {
+    pub fn create_swapchain(
+        &mut self,
+        window_handle: WindowHandle,
+        framebuffer_size: PhysicalSize,
+    ) -> WindowContext<Vertex> {
         WindowContext::new(&mut self.vulkan, window_handle, framebuffer_size, &mut self.effect_base)
     }
 
-    pub fn destroy_swapchain(&mut self, swapchain: WindowContext) {
+    pub fn destroy_swapchain(&mut self, swapchain: WindowContext<Vertex>) {
         swapchain.destroy(&mut self.vulkan)
     }
 
@@ -35,7 +40,7 @@ impl TriangleRenderer {
         self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut WindowContext, target_size: PhysicalSize, vertices: &[Vertex]) {
+    pub fn render_to(&mut self, swapchain: &mut WindowContext<Vertex>, target_size: PhysicalSize, vertices: &[Vertex]) {
         if target_size == (PhysicalSize { width: 0, height: 0 }) {
             return;
         }
@@ -46,16 +51,11 @@ impl TriangleRenderer {
             .next_frame(&mut self.vulkan, target_size, &mut self.effect_base)
             .unwrap();
 
-        // copy_to_buffer(&self.vulkan, frame.vertex_buffer, frame.vertex_buffer_size, vertices);
-        // TODO: This allocates memory every single frame and doesn't free it.
-        // Move this into swapchain... I guess
-        let (vertex_buffer, vertex_memory, vertex_buffer_size) = load_vertex_buffer(&self.vulkan, vertices);
         {
-            let slice =
-                self.vulkan
-                    .map_typed::<Vertex>(vertex_memory, 0, vertex_buffer_size, vk::MemoryMapFlags::empty());
+            frame.reserve_vertex_buffer_capacity(&mut self.vulkan, vertices.len());
+            let slice = frame.map_vertices(&mut self.vulkan);
             slice[0..vertices.len()].copy_from_slice(vertices);
-            self.vulkan.unmap(vertex_memory);
+            frame.unmap_vertices(&self.vulkan);
         }
 
         let viewport_rect = vk::Rect2D {
@@ -78,8 +78,8 @@ impl TriangleRenderer {
             frame.frame_buffer,
             viewport_rect,
             frame.command_buffer,
-            vertices.len() as u32,
-            vertex_buffer,
+            vertices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
+            frame.vertex_buffer(),
         );
 
         unsafe {
@@ -388,39 +388,4 @@ fn create_pipeline(
         .subpass(0);
 
     context.create_graphics_pipeline(&create_info)
-}
-
-fn load_vertex_buffer(context: &vulkan_utils::Context, vertices: &[Vertex]) -> (vk::Buffer, vk::DeviceMemory, u64) {
-    let create_info = vk::BufferCreateInfo {
-        s_type: vk::StructureType::BUFFER_CREATE_INFO,
-        p_next: std::ptr::null(),
-        flags: vk::BufferCreateFlags::empty(),
-        size: std::mem::size_of_val(vertices) as u64,
-        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-        sharing_mode: vk::SharingMode::EXCLUSIVE,
-        queue_family_index_count: 0,
-        p_queue_family_indices: std::ptr::null(),
-    };
-
-    let buffer = context.create_buffer(&create_info);
-
-    let memory_requirements = context.buffer_memory_requirements(buffer);
-    let memory_type_index = context
-        .find_memory_type(
-            memory_requirements.memory_type_bits,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .unwrap();
-
-    let alloc_info = vk::MemoryAllocateInfo {
-        s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
-        p_next: std::ptr::null(),
-        allocation_size: memory_requirements.size,
-        memory_type_index,
-    };
-
-    let buffer_memory = context.allocate(&alloc_info);
-    context.bind(buffer, buffer_memory, 0);
-
-    (buffer, buffer_memory, memory_requirements.size)
 }

@@ -1,21 +1,25 @@
+use std::marker::PhantomData;
+
 use ash::vk;
 
-use crate::constants::FRAMES_IN_FLIGHT;
+use crate::constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT};
 use crate::effect::{Effect, EffectBase};
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
-pub struct Frame {
+pub struct Frame<VertexType> {
     pub image_view: vk::ImageView,
     pub image_format: vk::Format,
     pub frame_buffer: vk::Framebuffer,
     pub command_buffer: vk::CommandBuffer,
-    // pub index_buffer_size: u32,
-    // pub vertex_buffer_size: u32,
-    // pub index_buffer: vk::Buffer,
-    // pub vertex_buffer: vk::Buffer,
+    vertex_buffer: vk::Buffer,
+    vertex_memory: vk::DeviceMemory,
+    vertex_buffer_size: vk::DeviceSize,
+    _phantom_vt: PhantomData<VertexType>,
 }
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct FrameSync {
     pub fence: vk::Fence,
@@ -23,7 +27,7 @@ pub struct FrameSync {
     pub present_semaphore: vk::Semaphore,
 }
 
-impl Frame {
+impl<VertexType> Frame<VertexType> {
     fn new(
         context: &mut vulkan_utils::Context,
         image: vk::Image,
@@ -31,7 +35,7 @@ impl Frame {
         image_format: vk::Format,
         command_pool: vk::CommandPool,
         effect: &dyn Effect,
-    ) -> Frame {
+    ) -> Frame<VertexType> {
         let image_view = {
             let create_info = vk::ImageViewCreateInfo::builder()
                 .image(image)
@@ -66,32 +70,116 @@ impl Frame {
             buffers[0]
         };
 
-        Frame {
+        let (vertex_buffer, vertex_memory, vertex_buffer_size) = Self::create_buffer(
+            context,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            std::mem::size_of::<VertexType>() * DEFAULT_VERTEX_BUFFER_SIZE,
+        );
+
+        Self {
             image_view,
             image_format,
             frame_buffer,
             command_buffer,
+            vertex_buffer,
+            vertex_memory,
+            vertex_buffer_size,
+            _phantom_vt: PhantomData,
         }
+    }
+
+    pub fn vertex_buffer(&self) -> vk::Buffer {
+        self.vertex_buffer
+    }
+
+    pub fn reserve_vertex_buffer_capacity(&mut self, context: &mut vulkan_utils::Context, num_vertices: usize) {
+        let min_capacity = num_vertices * std::mem::size_of::<VertexType>();
+
+        if self.vertex_buffer_size < min_capacity as vk::DeviceSize {
+            context.destroy_buffer(self.vertex_buffer);
+            context.free(self.vertex_memory);
+
+            let (buffer, memory, size) =
+                Self::create_buffer(context, vk::BufferUsageFlags::VERTEX_BUFFER, min_capacity);
+            self.vertex_buffer = buffer;
+            self.vertex_memory = memory;
+            self.vertex_buffer_size = size;
+        }
+    }
+
+    pub fn map_vertices<'a, 'b: 'a>(&'a mut self, context: &'b mut vulkan_utils::Context) -> &'a mut [VertexType] {
+        context.map_typed::<VertexType>(
+            self.vertex_memory,
+            0,
+            self.vertex_buffer_size,
+            vk::MemoryMapFlags::empty(),
+        )
+    }
+
+    pub fn unmap_vertices(&self, context: &vulkan_utils::Context) {
+        context.unmap(self.vertex_memory);
     }
 
     fn destroy(self, context: &mut vulkan_utils::Context, command_pool: vk::CommandPool) {
         context.destroy_image_view(self.image_view);
         context.destroy_frame_buffer(self.frame_buffer);
         context.free_command_buffers(command_pool, &[self.command_buffer]);
+
+        context.destroy_buffer(self.vertex_buffer);
+        context.free(self.vertex_memory);
+    }
+
+    fn create_buffer(
+        context: &mut vulkan_utils::Context,
+        kind: vk::BufferUsageFlags,
+        size: usize,
+    ) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
+        let create_info = vk::BufferCreateInfo {
+            s_type: vk::StructureType::BUFFER_CREATE_INFO,
+            p_next: std::ptr::null(),
+            flags: vk::BufferCreateFlags::empty(),
+            size: size as u64,
+            usage: kind,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_index_count: 0,
+            p_queue_family_indices: std::ptr::null(),
+        };
+
+        let buffer = context.create_buffer(&create_info);
+
+        let memory_requirements = context.buffer_memory_requirements(buffer);
+        let memory_type_index = context
+            .find_memory_type(
+                memory_requirements.memory_type_bits,
+                vk::MemoryPropertyFlags::HOST_VISIBLE,
+            )
+            .unwrap();
+
+        let alloc_info = vk::MemoryAllocateInfo {
+            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+            p_next: std::ptr::null(),
+            allocation_size: memory_requirements.size,
+            memory_type_index,
+        };
+
+        let buffer_memory = context.allocate(&alloc_info);
+        context.bind(buffer, buffer_memory, 0);
+
+        (buffer, buffer_memory, memory_requirements.size)
     }
 }
 
-pub struct WindowContext {
+pub struct WindowContext<VertexType> {
     current_image: u32,
     current_frame: usize,
     surface: vk::SurfaceKHR,
     swapchain: vulkan_utils::SwapchainData,
-    frames: Vec<Frame>,
+    frames: Vec<Frame<VertexType>>,
     command_pool: vk::CommandPool,
     sync_objects: [FrameSync; FRAMES_IN_FLIGHT],
 }
 
-impl WindowContext {
+impl<VertexType> WindowContext<VertexType> {
     pub fn new(
         context: &mut vulkan_utils::Context,
         window_handle: WindowHandle,
@@ -104,7 +192,7 @@ impl WindowContext {
 
         let command_pool = context.create_graphics_command_pool(true, true);
 
-        let mut window_context = WindowContext {
+        let mut window_context = Self {
             current_image: 0,
             current_frame: 0,
             surface,
@@ -179,7 +267,7 @@ impl WindowContext {
         context: &mut vulkan_utils::Context,
         target_size: PhysicalSize,
         presentation_effect: &mut dyn EffectBase,
-    ) -> Option<(&Frame, &FrameSync)> {
+    ) -> Option<(&mut Frame<VertexType>, &FrameSync)> {
         let extent = physical_size_to_extent(target_size);
 
         let _ = context.wait_for_fences(&[self.sync_objects[self.current_frame].fence], u64::MAX);
@@ -202,7 +290,7 @@ impl WindowContext {
 
         if self.swapchain.image_size == extent {
             self.current_image = image_index;
-            let frame = &self.frames[image_index as usize];
+            let frame = &mut self.frames[image_index as usize];
             context.reset_command_buffer(frame.command_buffer, false);
             Some((frame, &self.sync_objects[self.current_frame]))
         } else {

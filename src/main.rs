@@ -57,7 +57,7 @@ fn main() {
 
 struct AppWindow {
     size: PhysicalSize,
-    swapchain: WindowContext,
+    swapchain: WindowContext<Vertex>,
     last_draw: Instant,
 }
 
