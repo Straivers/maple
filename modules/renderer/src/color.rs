@@ -7,6 +7,10 @@ pub struct Color {
 }
 
 impl Color {
+    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Color { r, g, b, a: 255 }
+    }
+
     pub fn normalized(r: f32, g: f32, b: f32, a: f32) -> Self {
         let r8 = (r * u8::MAX as f32).round() as u8;
         let g8 = (g * u8::MAX as f32).round() as u8;

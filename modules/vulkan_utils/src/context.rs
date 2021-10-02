@@ -53,6 +53,7 @@ pub struct Context {
     library: EntryCustom<Library>,
     instance: Instance,
     pub(crate) gpu: Gpu,
+    pub gpu_properties: vk::PhysicalDeviceProperties,
     pub gpu_memory_info: vk::PhysicalDeviceMemoryProperties,
 
     pub device: Device,
@@ -123,6 +124,8 @@ impl Context {
 
         let gpu = select_physical_device(&instance, &os_surface_api).expect("No supported GPU found");
 
+        let gpu_properties = unsafe { instance.get_physical_device_properties(gpu.handle) };
+
         let gpu_memory_info = unsafe { instance.get_physical_device_memory_properties(gpu.handle) };
 
         let device = {
@@ -168,6 +171,7 @@ impl Context {
             library,
             instance,
             gpu,
+            gpu_properties,
             gpu_memory_info,
             device,
             graphics_queue,
@@ -502,6 +506,12 @@ impl Context {
         }
     }
 
+    pub fn map(&self, memory: vk::DeviceMemory, offset: vk::DeviceSize, size: vk::DeviceSize, flags: vk::MemoryMapFlags) -> *mut c_void {
+        unsafe {
+            self.device.map_memory(memory, offset, size,flags).expect("Memory map failed")
+        }
+    }
+
     #[allow(clippy::mut_from_ref)]
     pub fn map_typed<T>(
         &self,
@@ -524,6 +534,12 @@ impl Context {
         }
 
         unsafe { std::slice::from_raw_parts_mut(ptr as _, slice_length) }
+    }
+
+    pub fn flush_mapped(&self, ranges: &[vk::MappedMemoryRange]) {
+        unsafe {
+            self.device.flush_mapped_memory_ranges(ranges).expect("Out of memory");
+        }
     }
 
     pub fn unmap(&self, memory: vk::DeviceMemory) {

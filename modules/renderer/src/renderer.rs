@@ -11,12 +11,12 @@ use crate::window_context::{physical_size_to_extent, WindowContext};
 pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
 pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_frag.spv");
 
-pub struct TriangleRenderer {
+pub struct Renderer {
     vulkan: vulkan_utils::Context,
     effect_base: TriangleEffectBase,
 }
 
-impl TriangleRenderer {
+impl Renderer {
     pub fn new(vulkan_library: Library, debug_mode: bool) -> Self {
         let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode);
         let effect_base = TriangleEffectBase::new(&mut vulkan);
@@ -40,7 +40,7 @@ impl TriangleRenderer {
         self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut WindowContext<Vertex>, target_size: PhysicalSize, vertices: &[Vertex]) {
+    pub fn render_to(&mut self, swapchain: &mut WindowContext<Vertex>, target_size: PhysicalSize, vertices: &[Vertex], indices: &[u16]) {
         if target_size == (PhysicalSize { width: 0, height: 0 }) {
             return;
         }
@@ -51,12 +51,7 @@ impl TriangleRenderer {
             .next_frame(&mut self.vulkan, target_size, &mut self.effect_base)
             .unwrap();
 
-        {
-            frame.reserve_vertex_buffer_capacity(&mut self.vulkan, vertices.len());
-            let slice = frame.map_vertices(&mut self.vulkan);
-            slice[0..vertices.len()].copy_from_slice(vertices);
-            frame.unmap_vertices(&self.vulkan);
-        }
+        frame.copy_data_to_gpu(&mut self.vulkan, vertices, indices);
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
@@ -78,8 +73,9 @@ impl TriangleRenderer {
             frame.frame_buffer,
             viewport_rect,
             frame.command_buffer,
-            vertices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
+            indices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
             frame.vertex_buffer(),
+            frame.index_buffer()
         );
 
         unsafe {
@@ -110,7 +106,7 @@ impl TriangleRenderer {
     }
 }
 
-impl Drop for TriangleRenderer {
+impl Drop for Renderer {
     fn drop(&mut self) {
         TriangleEffectBase::destroy(std::mem::take(&mut self.effect_base), &self.vulkan);
     }
@@ -213,8 +209,9 @@ impl Effect for TriangleEffect {
         target: vk::Framebuffer,
         target_rect: vk::Rect2D,
         cmd: vk::CommandBuffer,
-        num_vertices: u32,
-        vertex_buffer: vk::Buffer,
+        num_indices: u32,
+        vertex_buffer: (vk::Buffer, vk::DeviceSize),
+        index_buffer: (vk::Buffer, vk::DeviceSize),
     ) {
         {
             let clear_values = [vk::ClearValue {
@@ -241,12 +238,14 @@ impl Effect for TriangleEffect {
                 .device
                 .cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
-            let vertex_buffers = [vertex_buffer];
-            let offsets = [0];
+            let vertex_buffers = [vertex_buffer.0];
+            let offsets = [vertex_buffer.1];
 
             context
                 .device
                 .cmd_bind_vertex_buffers(cmd, 0, &vertex_buffers, &offsets);
+
+            context.device.cmd_bind_index_buffer(cmd, index_buffer.0, index_buffer.1, vk::IndexType::UINT16);
         }
 
         {
@@ -264,7 +263,7 @@ impl Effect for TriangleEffect {
 
         unsafe {
             context.device.cmd_set_scissor(cmd, 0, &[target_rect]);
-            context.device.cmd_draw(cmd, num_vertices, 1, 0, 0);
+            context.device.cmd_draw_indexed(cmd, num_indices, 1, 0, 0, 0);
             context.device.cmd_end_render_pass(cmd);
         }
     }

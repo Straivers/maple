@@ -2,20 +2,21 @@ use std::marker::PhantomData;
 
 use ash::vk;
 
-use crate::constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT};
+use crate::constants::{DEFAULT_GPU_BUFFER_SIZE, FRAMES_IN_FLIGHT};
 use crate::effect::{Effect, EffectBase};
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
-pub struct Frame<VertexType> {
+pub struct Frame<VertexType: Copy> {
     pub image_view: vk::ImageView,
     pub image_format: vk::Format,
     pub frame_buffer: vk::Framebuffer,
     pub command_buffer: vk::CommandBuffer,
-    vertex_buffer: vk::Buffer,
-    vertex_memory: vk::DeviceMemory,
-    vertex_buffer_size: vk::DeviceSize,
+    buffer: vk::Buffer,
+    memory: vk::DeviceMemory,
+    memory_size: vk::DeviceSize,
+    index_buffer_offset: vk::DeviceSize,
     _phantom_vt: PhantomData<VertexType>,
 }
 
@@ -27,7 +28,7 @@ pub struct FrameSync {
     pub present_semaphore: vk::Semaphore,
 }
 
-impl<VertexType> Frame<VertexType> {
+impl<VertexType: Copy> Frame<VertexType> {
     fn new(
         context: &mut vulkan_utils::Context,
         image: vk::Image,
@@ -70,54 +71,69 @@ impl<VertexType> Frame<VertexType> {
             buffers[0]
         };
 
-        let (vertex_buffer, vertex_memory, vertex_buffer_size) = Self::create_buffer(
-            context,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            std::mem::size_of::<VertexType>() * DEFAULT_VERTEX_BUFFER_SIZE,
-        );
+        let (buffer, vertex_memory, vertex_buffer_size) = Self::create_buffer(context, DEFAULT_GPU_BUFFER_SIZE);
 
         Self {
             image_view,
             image_format,
             frame_buffer,
             command_buffer,
-            vertex_buffer,
-            vertex_memory,
-            vertex_buffer_size,
+            buffer,
+            memory: vertex_memory,
+            memory_size: vertex_buffer_size,
+            index_buffer_offset: 0,
             _phantom_vt: PhantomData,
         }
     }
 
-    pub fn vertex_buffer(&self) -> vk::Buffer {
-        self.vertex_buffer
+    pub fn vertex_buffer(&self) -> (vk::Buffer, vk::DeviceSize) {
+        (self.buffer, 0)
     }
 
-    pub fn reserve_vertex_buffer_capacity(&mut self, context: &mut vulkan_utils::Context, num_vertices: usize) {
-        let min_capacity = num_vertices * std::mem::size_of::<VertexType>();
+    pub fn index_buffer(&self) -> (vk::Buffer, vk::DeviceSize) {
+        (self.buffer, self.index_buffer_offset)
+    }
 
-        if self.vertex_buffer_size < min_capacity as vk::DeviceSize {
-            context.destroy_buffer(self.vertex_buffer);
-            context.free(self.vertex_memory);
+    pub fn copy_data_to_gpu(&mut self, context: &mut vulkan_utils::Context, vertices: &[VertexType], indices: &[u16]) {
+        let alignment = context.gpu_properties.limits.non_coherent_atom_size;
+        let vertex_buffer_size = round_size_to_multiple_of(std::mem::size_of_val(vertices) as u64, alignment);
 
-            let (buffer, memory, size) =
-                Self::create_buffer(context, vk::BufferUsageFlags::VERTEX_BUFFER, min_capacity);
-            self.vertex_buffer = buffer;
-            self.vertex_memory = memory;
-            self.vertex_buffer_size = size;
+        let min_capacity =
+            vertices.len() * std::mem::size_of::<VertexType>() + indices.len() * std::mem::size_of::<u16>();
+
+        if self.memory_size < min_capacity as vk::DeviceSize {
+            context.destroy_buffer(self.buffer);
+            context.free(self.memory);
+
+            let (buffer, memory, size) = Self::create_buffer(context, min_capacity);
+            self.buffer = buffer;
+            self.memory = memory;
+            self.memory_size = size;
         }
-    }
 
-    pub fn map_vertices<'a, 'b: 'a>(&'a mut self, context: &'b mut vulkan_utils::Context) -> &'a mut [VertexType] {
-        context.map_typed::<VertexType>(
-            self.vertex_memory,
-            0,
-            self.vertex_buffer_size,
-            vk::MemoryMapFlags::empty(),
-        )
-    }
+        let ptr = context.map(self.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
 
-    pub fn unmap_vertices(&self, context: &vulkan_utils::Context) {
-        context.unmap(self.vertex_memory);
+        unsafe {
+            let buffer = std::slice::from_raw_parts_mut(ptr as *mut _, vertices.len());
+            buffer.copy_from_slice(vertices);
+
+            let buffer = std::slice::from_raw_parts_mut(ptr.add(vertex_buffer_size as usize) as *mut _, indices.len());
+            buffer.copy_from_slice(indices);
+        }
+
+        // PERFORMANCE: This call is unecessary if the memory is host-coherent
+        context.flush_mapped(&[vk::MappedMemoryRange {
+            s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
+            p_next: std::ptr::null(),
+            memory: self.memory,
+            offset: 0,
+            size: vk::WHOLE_SIZE,
+        }]);
+
+        context.unmap(self.memory);
+
+        self.index_buffer_offset = vertex_buffer_size;
+
     }
 
     fn destroy(self, context: &mut vulkan_utils::Context, command_pool: vk::CommandPool) {
@@ -125,13 +141,12 @@ impl<VertexType> Frame<VertexType> {
         context.destroy_frame_buffer(self.frame_buffer);
         context.free_command_buffers(command_pool, &[self.command_buffer]);
 
-        context.destroy_buffer(self.vertex_buffer);
-        context.free(self.vertex_memory);
+        context.destroy_buffer(self.buffer);
+        context.free(self.memory);
     }
 
     fn create_buffer(
         context: &mut vulkan_utils::Context,
-        kind: vk::BufferUsageFlags,
         size: usize,
     ) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
         let create_info = vk::BufferCreateInfo {
@@ -139,7 +154,7 @@ impl<VertexType> Frame<VertexType> {
             p_next: std::ptr::null(),
             flags: vk::BufferCreateFlags::empty(),
             size: size as u64,
-            usage: kind,
+            usage: vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queue_family_index_count: 0,
             p_queue_family_indices: std::ptr::null(),
@@ -169,7 +184,7 @@ impl<VertexType> Frame<VertexType> {
     }
 }
 
-pub struct WindowContext<VertexType> {
+pub struct WindowContext<VertexType: Copy> {
     current_image: u32,
     current_frame: usize,
     surface: vk::SurfaceKHR,
@@ -179,7 +194,7 @@ pub struct WindowContext<VertexType> {
     sync_objects: [FrameSync; FRAMES_IN_FLIGHT],
 }
 
-impl<VertexType> WindowContext<VertexType> {
+impl<VertexType: Copy> WindowContext<VertexType> {
     pub fn new(
         context: &mut vulkan_utils::Context,
         window_handle: WindowHandle,
@@ -329,4 +344,8 @@ pub fn physical_size_to_extent(size: sys::dpi::PhysicalSize) -> vk::Extent2D {
         width: u32::from(size.width),
         height: u32::from(size.height),
     }
+}
+
+fn round_size_to_multiple_of(from: vk::DeviceSize, multiple: vk::DeviceSize) -> vk::DeviceSize {
+    ((from + multiple - 1) / multiple) * multiple
 }

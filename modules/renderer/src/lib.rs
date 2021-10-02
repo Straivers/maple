@@ -8,5 +8,5 @@ pub mod vertex;
 mod window_context;
 pub use window_context::WindowContext;
 
-mod triangle_renderer;
-pub use triangle_renderer::TriangleRenderer;
+mod renderer;
+pub use renderer::Renderer;

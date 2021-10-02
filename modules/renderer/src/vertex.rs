@@ -25,8 +25,8 @@ impl Vertex {
         vk::VertexInputAttributeDescription {
             binding: 0,
             location: 1,
-            format: vk::Format::R32G32B32A32_SFLOAT,
-            offset: 12,
+            format: vk::Format::R8G8B8A8_UNORM,
+            offset: std::mem::size_of::<float2>() as u32,
         },
     ];
 }
