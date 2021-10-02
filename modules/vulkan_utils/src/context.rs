@@ -512,30 +512,6 @@ impl Context {
         }
     }
 
-    #[allow(clippy::mut_from_ref)]
-    pub fn map_typed<T>(
-        &self,
-        memory: vk::DeviceMemory,
-        offset: u64,
-        size: u64,
-        flags: vk::MemoryMapFlags,
-    ) -> &mut [T] {
-        let ptr = unsafe {
-            self.device
-                .map_memory(memory, offset, size, flags)
-                .expect("Memory map failed")
-        };
-        let type_layout = std::alloc::Layout::new::<T>();
-
-        let slice_length = size as usize / type_layout.size();
-
-        if offset > 0 {
-            assert!(type_layout.align() as u64 % offset == 0);
-        }
-
-        unsafe { std::slice::from_raw_parts_mut(ptr as _, slice_length) }
-    }
-
     pub fn flush_mapped(&self, ranges: &[vk::MappedMemoryRange]) {
         unsafe {
             self.device.flush_mapped_memory_ranges(ranges).expect("Out of memory");
