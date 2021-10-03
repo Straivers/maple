@@ -421,11 +421,8 @@ impl Context {
         }
     }
 
-    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder{
-        CommandRecorder::new(
-            &self.device,
-            buffer
-        )
+    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder {
+        CommandRecorder::new(&self.device, buffer)
     }
 
     pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {

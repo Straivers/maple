@@ -54,7 +54,8 @@ impl<'a> CommandRecorder<'a> {
 
     pub fn bind_index_buffer(&self, buffer: vk::Buffer, offset: u64, index_type: vk::IndexType) {
         unsafe {
-            self.device.cmd_bind_index_buffer(self.buffer, buffer, offset, index_type);
+            self.device
+                .cmd_bind_index_buffer(self.buffer, buffer, offset, index_type);
         }
     }
 
@@ -70,9 +71,23 @@ impl<'a> CommandRecorder<'a> {
         }
     }
 
-    pub fn draw_indexed(&self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
+    pub fn draw_indexed(
+        &self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) {
         unsafe {
-            self.device.cmd_draw_indexed(self.buffer, index_count, instance_count, first_index, vertex_offset, first_instance);
+            self.device.cmd_draw_indexed(
+                self.buffer,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            );
         }
     }
 }

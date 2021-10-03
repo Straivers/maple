@@ -56,18 +56,18 @@ impl Renderer {
 
         let target_extent = physical_size_to_extent(target_size);
 
-        let (frame, frame_sync) = swapchain
+        let (frame, frame_objects) = swapchain
             .next_frame(&mut self.vulkan, target_size, &mut self.effect_base)
             .unwrap();
 
-        frame.copy_data_to_gpu(&mut self.vulkan, vertices, indices);
+        frame_objects.copy_data_to_gpu(&mut self.vulkan, vertices, indices);
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: target_extent,
         };
 
-        let cmd = self.vulkan.record_command_buffer(frame.command_buffer);
+        let cmd = self.vulkan.record_command_buffer(frame_objects.command_buffer);
 
         cmd.begin();
 
@@ -76,8 +76,8 @@ impl Renderer {
             frame.frame_buffer,
             viewport_rect,
             indices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
-            frame.vertex_buffer(),
-            frame.index_buffer(),
+            frame_objects.vertex_buffer(),
+            frame_objects.index_buffer(),
         );
 
         cmd.end();
@@ -87,16 +87,17 @@ impl Renderer {
                 s_type: vk::StructureType::SUBMIT_INFO,
                 p_next: std::ptr::null(),
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &frame_sync.acquire_semaphore,
+                p_wait_semaphores: &frame_objects.acquire_semaphore,
                 p_wait_dst_stage_mask: &vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 signal_semaphore_count: 1,
-                p_signal_semaphores: &frame_sync.present_semaphore,
+                p_signal_semaphores: &frame_objects.present_semaphore,
                 command_buffer_count: 1,
                 p_command_buffers: &cmd.buffer,
             };
 
-            self.vulkan.reset_fences(&[frame_sync.fence]);
-            self.vulkan.submit_to_graphics_queue(&[submit_info], frame_sync.fence);
+            self.vulkan.reset_fences(&[frame_objects.fence]);
+            self.vulkan
+                .submit_to_graphics_queue(&[submit_info], frame_objects.fence);
         }
 
         swapchain.present(&mut self.vulkan);
