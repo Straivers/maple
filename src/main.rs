@@ -138,7 +138,9 @@ fn run(cli_options: &CliOptions) {
             WindowEvent::Resized { window, size } => {
                 let app_window = app_state.windows.get_mut(&window).unwrap();
                 app_window.size = size;
-                app_state.renderer.render_to(&mut app_window.swapchain, size, &rectangle, &indices);
+                app_state
+                    .renderer
+                    .render_to(&mut app_window.swapchain, size, &rectangle, &indices);
                 app_window.last_draw = Instant::now();
 
                 // Keep other windows from locking up whle modalling resizing.

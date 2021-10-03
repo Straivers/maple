@@ -1,8 +1,11 @@
-use ash::vk;
 use std::convert::TryInto;
 use std::{collections::HashMap, ffi::CStr};
+
+use ash::vk;
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
+
+use vulkan_utils::CommandRecorder;
 
 use crate::effect::{Effect, EffectBase};
 use crate::vertex::Vertex;
@@ -13,13 +16,13 @@ pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_ve
 
 pub struct Renderer {
     vulkan: vulkan_utils::Context,
-    effect_base: TriangleEffectBase,
+    effect_base: RenderEffectBase,
 }
 
 impl Renderer {
     pub fn new(vulkan_library: Library, debug_mode: bool) -> Self {
         let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode);
-        let effect_base = TriangleEffectBase::new(&mut vulkan);
+        let effect_base = RenderEffectBase::new(&mut vulkan);
 
         Self { vulkan, effect_base }
     }
@@ -40,7 +43,13 @@ impl Renderer {
         self.effect_base.cleanup(&self.vulkan);
     }
 
-    pub fn render_to(&mut self, swapchain: &mut WindowContext<Vertex>, target_size: PhysicalSize, vertices: &[Vertex], indices: &[u16]) {
+    pub fn render_to(
+        &mut self,
+        swapchain: &mut WindowContext<Vertex>,
+        target_size: PhysicalSize,
+        vertices: &[Vertex],
+        indices: &[u16],
+    ) {
         if target_size == (PhysicalSize { width: 0, height: 0 }) {
             return;
         }
@@ -58,32 +67,20 @@ impl Renderer {
             extent: target_extent,
         };
 
-        {
-            let begin_info = vk::CommandBufferBeginInfo::default();
-            unsafe {
-                self.vulkan
-                    .device
-                    .begin_command_buffer(frame.command_buffer, &begin_info)
-            }
-            .expect("Out of memory");
-        }
+        let cmd = self.vulkan.record_command_buffer(frame.command_buffer);
+
+        cmd.begin();
 
         self.effect_base.get_effect(&self.vulkan, frame.image_format).apply(
-            &self.vulkan,
+            &cmd,
             frame.frame_buffer,
             viewport_rect,
-            frame.command_buffer,
             indices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
             frame.vertex_buffer(),
-            frame.index_buffer()
+            frame.index_buffer(),
         );
 
-        unsafe {
-            self.vulkan
-                .device
-                .end_command_buffer(frame.command_buffer)
-                .expect("Out of memory");
-        }
+        cmd.end();
 
         {
             let submit_info = vk::SubmitInfo {
@@ -95,7 +92,7 @@ impl Renderer {
                 signal_semaphore_count: 1,
                 p_signal_semaphores: &frame_sync.present_semaphore,
                 command_buffer_count: 1,
-                p_command_buffers: &frame.command_buffer,
+                p_command_buffers: &cmd.buffer,
             };
 
             self.vulkan.reset_fences(&[frame_sync.fence]);
@@ -108,20 +105,20 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        TriangleEffectBase::destroy(std::mem::take(&mut self.effect_base), &self.vulkan);
+        RenderEffectBase::destroy(std::mem::take(&mut self.effect_base), &self.vulkan);
     }
 }
 
 #[derive(Default)]
-struct TriangleEffectBase {
+struct RenderEffectBase {
     generation: u64,
     vertex_shader: vk::ShaderModule,
     fragment_shader: vk::ShaderModule,
     pipeline_layout: vk::PipelineLayout,
-    effects: HashMap<vk::Format, TriangleEffect>,
+    effects: HashMap<vk::Format, RenderEffect>,
 }
 
-impl TriangleEffectBase {
+impl RenderEffectBase {
     fn new(context: &mut vulkan_utils::Context) -> Self {
         let vertex_shader = context.create_shader(TRIANGLE_VERTEX_SHADER);
         let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER);
@@ -141,7 +138,7 @@ impl TriangleEffectBase {
     }
 }
 
-impl EffectBase for TriangleEffectBase {
+impl EffectBase for RenderEffectBase {
     fn cleanup(&mut self, context: &vulkan_utils::Context) {
         self.generation += 1;
 
@@ -180,7 +177,7 @@ impl EffectBase for TriangleEffectBase {
             let render_pass = create_renderpass(context, output_format);
             let pipeline = create_pipeline(context, vertex_shader, fragment_shader, render_pass, pipeline_layout);
 
-            TriangleEffect {
+            RenderEffect {
                 render_pass,
                 pipeline,
                 generation,
@@ -192,23 +189,22 @@ impl EffectBase for TriangleEffectBase {
     }
 }
 
-struct TriangleEffect {
+struct RenderEffect {
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
     generation: u64,
 }
 
-impl Effect for TriangleEffect {
+impl Effect for RenderEffect {
     fn render_pass(&self) -> vk::RenderPass {
         self.render_pass
     }
 
     fn apply(
         &self,
-        context: &vulkan_utils::Context,
+        cmd: &CommandRecorder,
         target: vk::Framebuffer,
         target_rect: vk::Rect2D,
-        cmd: vk::CommandBuffer,
         num_indices: u32,
         vertex_buffer: (vk::Buffer, vk::DeviceSize),
         index_buffer: (vk::Buffer, vk::DeviceSize),
@@ -220,52 +216,35 @@ impl Effect for TriangleEffect {
                 },
             }];
 
-            let render_pass_info = vk::RenderPassBeginInfo::builder()
-                .render_pass(self.render_pass)
-                .framebuffer(target)
-                .render_area(target_rect)
-                .clear_values(&clear_values);
-
-            unsafe {
-                context
-                    .device
-                    .cmd_begin_render_pass(cmd, &render_pass_info, vk::SubpassContents::INLINE)
-            };
+            cmd.begin_render_pass(
+                &vk::RenderPassBeginInfo::builder()
+                    .render_pass(self.render_pass)
+                    .framebuffer(target)
+                    .render_area(target_rect)
+                    .clear_values(&clear_values),
+                vk::SubpassContents::INLINE,
+            );
         }
 
-        unsafe {
-            context
-                .device
-                .cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+        cmd.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
-            let vertex_buffers = [vertex_buffer.0];
-            let offsets = [vertex_buffer.1];
+        let vertex_buffers = [vertex_buffer.0];
+        let offsets = [vertex_buffer.1];
+        cmd.bind_vertex_buffers(0, &vertex_buffers, &offsets);
+        cmd.bind_index_buffer(index_buffer.0, index_buffer.1, vk::IndexType::UINT16);
 
-            context
-                .device
-                .cmd_bind_vertex_buffers(cmd, 0, &vertex_buffers, &offsets);
+        cmd.set_viewport(&[vk::Viewport {
+            x: target_rect.offset.x as f32,
+            y: target_rect.offset.y as f32,
+            width: target_rect.extent.width as f32,
+            height: target_rect.extent.height as f32,
+            min_depth: 0.0,
+            max_depth: 0.0,
+        }]);
 
-            context.device.cmd_bind_index_buffer(cmd, index_buffer.0, index_buffer.1, vk::IndexType::UINT16);
-        }
-
-        {
-            let viewport = vk::Viewport {
-                x: target_rect.offset.x as f32,
-                y: target_rect.offset.y as f32,
-                width: target_rect.extent.width as f32,
-                height: target_rect.extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 0.0,
-            };
-
-            unsafe { context.device.cmd_set_viewport(cmd, 0, &[viewport]) }
-        }
-
-        unsafe {
-            context.device.cmd_set_scissor(cmd, 0, &[target_rect]);
-            context.device.cmd_draw_indexed(cmd, num_indices, 1, 0, 0, 0);
-            context.device.cmd_end_render_pass(cmd);
-        }
+        cmd.set_scissor(&[target_rect]);
+        cmd.draw_indexed(num_indices, 1, 0, 0, 0);
+        cmd.end_render_pass();
     }
 }
 

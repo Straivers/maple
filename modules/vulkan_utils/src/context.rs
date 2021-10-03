@@ -21,6 +21,8 @@ use ash::{
 use sys::library::Library;
 use utils::array_vec::ArrayVec;
 
+use crate::CommandRecorder;
+
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
 const SYNC_POOL_SIZE: usize = 128;
@@ -419,6 +421,13 @@ impl Context {
         }
     }
 
+    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder{
+        CommandRecorder::new(
+            &self.device,
+            buffer
+        )
+    }
+
     pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {
         unsafe {
             self.device
@@ -506,9 +515,17 @@ impl Context {
         }
     }
 
-    pub fn map(&self, memory: vk::DeviceMemory, offset: vk::DeviceSize, size: vk::DeviceSize, flags: vk::MemoryMapFlags) -> *mut c_void {
+    pub fn map(
+        &self,
+        memory: vk::DeviceMemory,
+        offset: vk::DeviceSize,
+        size: vk::DeviceSize,
+        flags: vk::MemoryMapFlags,
+    ) -> *mut c_void {
         unsafe {
-            self.device.map_memory(memory, offset, size,flags).expect("Memory map failed")
+            self.device
+                .map_memory(memory, offset, size, flags)
+                .expect("Memory map failed")
         }
     }
 

@@ -30,12 +30,12 @@ pub struct FrameSync {
 
 impl<VertexType: Copy> Frame<VertexType> {
     fn new(
-        context: &mut vulkan_utils::Context,
+        context: &vulkan_utils::Context,
         image: vk::Image,
         image_size: vk::Extent2D,
         image_format: vk::Format,
         command_pool: vk::CommandPool,
-        effect: &dyn Effect,
+        render_pass: vk::RenderPass,
     ) -> Frame<VertexType> {
         let image_view = {
             let create_info = vk::ImageViewCreateInfo::builder()
@@ -56,7 +56,7 @@ impl<VertexType: Copy> Frame<VertexType> {
         let frame_buffer = {
             let attachment = [image_view];
             let create_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(effect.render_pass())
+                .render_pass(render_pass)
                 .attachments(&attachment)
                 .width(image_size.width)
                 .height(image_size.height)
@@ -71,19 +71,20 @@ impl<VertexType: Copy> Frame<VertexType> {
             buffers[0]
         };
 
-        let (buffer, vertex_memory, vertex_buffer_size) = Self::create_buffer(context, DEFAULT_GPU_BUFFER_SIZE);
-
-        Self {
+        let mut frame = Self {
             image_view,
             image_format,
             frame_buffer,
             command_buffer,
-            buffer,
-            memory: vertex_memory,
-            memory_size: vertex_buffer_size,
+            buffer: vk::Buffer::null(),
+            memory: vk::DeviceMemory::null(),
+            memory_size: 0,
             index_buffer_offset: 0,
             _phantom_vt: PhantomData,
-        }
+        };
+
+        frame.ensure_buffer_size(context, DEFAULT_GPU_BUFFER_SIZE);
+        frame
     }
 
     pub fn vertex_buffer(&self) -> (vk::Buffer, vk::DeviceSize) {
@@ -101,15 +102,7 @@ impl<VertexType: Copy> Frame<VertexType> {
         let min_capacity =
             vertices.len() * std::mem::size_of::<VertexType>() + indices.len() * std::mem::size_of::<u16>();
 
-        if self.memory_size < min_capacity as vk::DeviceSize {
-            context.destroy_buffer(self.buffer);
-            context.free(self.memory);
-
-            let (buffer, memory, size) = Self::create_buffer(context, min_capacity);
-            self.buffer = buffer;
-            self.memory = memory;
-            self.memory_size = size;
-        }
+        self.ensure_buffer_size(context, min_capacity);
 
         let ptr = context.map(self.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
 
@@ -133,10 +126,9 @@ impl<VertexType: Copy> Frame<VertexType> {
         context.unmap(self.memory);
 
         self.index_buffer_offset = vertex_buffer_size;
-
     }
 
-    fn destroy(self, context: &mut vulkan_utils::Context, command_pool: vk::CommandPool) {
+    fn destroy(self, context: &vulkan_utils::Context, command_pool: vk::CommandPool) {
         context.destroy_image_view(self.image_view);
         context.destroy_frame_buffer(self.frame_buffer);
         context.free_command_buffers(command_pool, &[self.command_buffer]);
@@ -145,11 +137,15 @@ impl<VertexType: Copy> Frame<VertexType> {
         context.free(self.memory);
     }
 
-    fn create_buffer(
-        context: &mut vulkan_utils::Context,
-        size: usize,
-    ) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
-        let create_info = vk::BufferCreateInfo {
+    fn ensure_buffer_size(&mut self, context: &vulkan_utils::Context, size: usize) {
+        if self.memory_size >= size as u64 {
+            return;
+        }
+
+        context.destroy_buffer(self.buffer);
+        context.free(self.memory);
+
+        self.buffer = context.create_buffer(&vk::BufferCreateInfo {
             s_type: vk::StructureType::BUFFER_CREATE_INFO,
             p_next: std::ptr::null(),
             flags: vk::BufferCreateFlags::empty(),
@@ -158,11 +154,9 @@ impl<VertexType: Copy> Frame<VertexType> {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queue_family_index_count: 0,
             p_queue_family_indices: std::ptr::null(),
-        };
+        });
 
-        let buffer = context.create_buffer(&create_info);
-
-        let memory_requirements = context.buffer_memory_requirements(buffer);
+        let memory_requirements = context.buffer_memory_requirements(self.buffer);
         let memory_type_index = context
             .find_memory_type(
                 memory_requirements.memory_type_bits,
@@ -177,10 +171,9 @@ impl<VertexType: Copy> Frame<VertexType> {
             memory_type_index,
         };
 
-        let buffer_memory = context.allocate(&alloc_info);
-        context.bind(buffer, buffer_memory, 0);
-
-        (buffer, buffer_memory, memory_requirements.size)
+        self.memory = context.allocate(&alloc_info);
+        self.memory_size = memory_requirements.size;
+        context.bind(self.buffer, self.memory, 0);
     }
 }
 
@@ -229,7 +222,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         };
 
         let effect = presentation_effect.get_effect(context, window_context.swapchain.format);
-        window_context.create_frames(context, effect);
+        window_context.create_frames(context, effect.render_pass());
         window_context
     }
 
@@ -258,7 +251,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
 
     pub fn resize(
         &mut self,
-        context: &mut vulkan_utils::Context,
+        context: &vulkan_utils::Context,
         fb_size: PhysicalSize,
         presentation_effect: &mut dyn EffectBase,
     ) {
@@ -273,13 +266,13 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         }
 
         let effect = presentation_effect.get_effect(context, self.swapchain.format);
-        self.create_frames(context, effect);
+        self.create_frames(context, effect.render_pass());
     }
 
     /// Returns None if resizing failed
     pub fn next_frame(
         &mut self,
-        context: &mut vulkan_utils::Context,
+        context: &vulkan_utils::Context,
         target_size: PhysicalSize,
         presentation_effect: &mut dyn EffectBase,
     ) -> Option<(&mut Frame<VertexType>, &FrameSync)> {
@@ -313,7 +306,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         }
     }
 
-    pub fn present(&mut self, context: &mut vulkan_utils::Context) {
+    pub fn present(&mut self, context: &vulkan_utils::Context) {
         context.present_swapchain_image(
             &self.swapchain,
             &[self.sync_objects[self.current_frame].present_semaphore],
@@ -323,7 +316,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT;
     }
 
-    fn create_frames(&mut self, context: &mut vulkan_utils::Context, effect: &dyn Effect) {
+    fn create_frames(&mut self, context: &vulkan_utils::Context, render_pass: vk::RenderPass) {
         assert!(self.frames.is_empty());
         self.frames.reserve(self.swapchain.images.len());
         for image in &self.swapchain.images {
@@ -333,7 +326,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
                 self.swapchain.image_size,
                 self.swapchain.format,
                 self.command_pool,
-                effect,
+                render_pass,
             ));
         }
     }

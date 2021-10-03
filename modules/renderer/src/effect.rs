@@ -1,13 +1,13 @@
 use ash::vk;
+use vulkan_utils::CommandRecorder;
 
 pub trait Effect {
     fn render_pass(&self) -> vk::RenderPass;
     fn apply(
         &self,
-        context: &vulkan_utils::Context,
+        cmd: &CommandRecorder,
         target: vk::Framebuffer,
         target_rect: vk::Rect2D,
-        cmd: vk::CommandBuffer,
         num_indices: u32,
         vertex_buffer: (vk::Buffer, vk::DeviceSize),
         index_buffer: (vk::Buffer, vk::DeviceSize),
