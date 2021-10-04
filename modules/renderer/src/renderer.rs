@@ -5,7 +5,7 @@ use ash::vk;
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
-use vulkan_utils::CommandRecorder;
+use vulkan_utils::{Vulkan, CommandRecorder};
 
 use crate::color::Color;
 use crate::effect::{Effect, EffectBase};
@@ -83,13 +83,13 @@ impl crate::geometry::Rect {
 }
 
 pub struct Renderer {
-    vulkan: vulkan_utils::Vulkan,
+    vulkan: Vulkan,
     effect_base: RenderEffectBase,
 }
 
 impl Renderer {
     pub fn new(vulkan_library: Library, debug_mode: bool) -> Self {
-        let mut vulkan = vulkan_utils::Vulkan::new(vulkan_library, debug_mode);
+        let mut vulkan = Vulkan::new(vulkan_library, debug_mode);
         let effect_base = RenderEffectBase::new(&mut vulkan);
 
         Self { vulkan, effect_base }
@@ -210,7 +210,7 @@ struct RenderEffectBase {
 }
 
 impl RenderEffectBase {
-    fn new(vulkan: &mut vulkan_utils::Vulkan) -> Self {
+    fn new(vulkan: &mut Vulkan) -> Self {
         let vertex_shader = vulkan.create_shader(TRIANGLE_VERTEX_SHADER);
         let fragment_shader = vulkan.create_shader(TRIANGLE_FRAGMENT_SHADER);
 
@@ -236,7 +236,7 @@ impl RenderEffectBase {
 }
 
 impl EffectBase for RenderEffectBase {
-    fn cleanup(&mut self, vulkan: &vulkan_utils::Vulkan) {
+    fn cleanup(&mut self, vulkan: &Vulkan) {
         self.generation += 1;
 
         let generation = self.generation;
@@ -250,7 +250,7 @@ impl EffectBase for RenderEffectBase {
         });
     }
 
-    fn destroy(mut self, vulkan: &vulkan_utils::Vulkan) {
+    fn destroy(mut self, vulkan: &Vulkan) {
         self.cleanup(vulkan);
         assert!(
             self.effects.is_empty(),
@@ -262,7 +262,7 @@ impl EffectBase for RenderEffectBase {
         vulkan.destroy_pipeline_layout(self.pipeline_layout);
     }
 
-    fn get_effect(&mut self, vulkan: &vulkan_utils::Vulkan, output_format: vk::Format) -> &dyn Effect {
+    fn get_effect(&mut self, vulkan: &Vulkan, output_format: vk::Format) -> &dyn Effect {
         // These are copied out so that `self` doesn't have to be borrowed in
         // `or_insert_with()`
         let generation = self.generation;
@@ -354,7 +354,7 @@ impl Effect for RenderEffect {
     }
 }
 
-fn create_renderpass(vulkan: &vulkan_utils::Vulkan, format: vk::Format) -> vk::RenderPass {
+fn create_renderpass(vulkan: &Vulkan, format: vk::Format) -> vk::RenderPass {
     let attachments = [vk::AttachmentDescription::builder()
         .format(format)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -394,7 +394,7 @@ fn create_renderpass(vulkan: &vulkan_utils::Vulkan, format: vk::Format) -> vk::R
 }
 
 fn create_pipeline(
-    vulkan: &vulkan_utils::Vulkan,
+    vulkan: &Vulkan,
     vertex_shader: vk::ShaderModule,
     fragment_shader: vk::ShaderModule,
     render_pass: vk::RenderPass,
