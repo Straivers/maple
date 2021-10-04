@@ -13,7 +13,12 @@ use std::{
 
 use clap::{App, Arg};
 
-use renderer::{color::Color, geometry::float2, vertex::Vertex, Renderer, WindowContext};
+use renderer::{
+    color::Color,
+    geometry::{float2, Rect},
+    vertex::Vertex,
+    Renderer, WindowContext,
+};
 
 use sys::{
     dpi::PhysicalSize,
@@ -86,26 +91,12 @@ impl Drop for AppState {
 }
 
 fn run(cli_options: &CliOptions) {
-    let rectangle = [
-        Vertex {
-            position: float2(-0.5, -0.5),
-            color: Color::rgb(255, 0, 0),
-        },
-        Vertex {
-            position: float2(0.5, -0.5),
-            color: Color::rgb(0, 255, 0),
-        },
-        Vertex {
-            position: float2(0.5, 0.5),
-            color: Color::rgb(0, 0, 255),
-        },
-        Vertex {
-            position: float2(-0.5, 0.5),
-            color: Color::rgb(255, 255, 255),
-        },
-    ];
+    let rectangle = Rect {
+        position: float2(-0.5, -0.5),
+        extent: float2(1.0, 1.0),
+    };
 
-    let indices = [0, 1, 2, 2, 3, 0];
+    let (vertices, indices) = rectangle.to_vertices(Color::rgb(128, 128, 128));
 
     let mut app_state = AppState::new(cli_options.with_vulkan_validation);
     let min_frame_time = Duration::from_secs(1) / MIN_FRAME_RATE;
@@ -140,7 +131,7 @@ fn run(cli_options: &CliOptions) {
                 app_window.size = size;
                 app_state
                     .renderer
-                    .render_to(&mut app_window.swapchain, size, &rectangle, &indices);
+                    .render_to(&mut app_window.swapchain, size, &vertices, &indices);
                 app_window.last_draw = Instant::now();
 
                 // Keep other windows from locking up whle modalling resizing.
@@ -148,7 +139,7 @@ fn run(cli_options: &CliOptions) {
                     if *handle != window && Instant::now() - app_window.last_draw >= min_frame_time {
                         app_state
                             .renderer
-                            .render_to(&mut app_window.swapchain, app_window.size, &rectangle, &indices);
+                            .render_to(&mut app_window.swapchain, app_window.size, &vertices, &indices);
                         app_window.last_draw = Instant::now();
                     }
                 }
@@ -157,7 +148,7 @@ fn run(cli_options: &CliOptions) {
                 for app_window in app_state.windows.values_mut() {
                     app_state
                         .renderer
-                        .render_to(&mut app_window.swapchain, app_window.size, &rectangle, &indices);
+                        .render_to(&mut app_window.swapchain, app_window.size, &vertices, &indices);
                     app_window.last_draw = Instant::now();
                 }
 

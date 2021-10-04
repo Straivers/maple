@@ -30,3 +30,41 @@ impl Vertex {
         },
     ];
 }
+
+impl crate::geometry::Rect {
+    /// Converts a `Rect2D` into a set of vertices and associated indices. The
+    /// vertices are listed clockwise from the lower-left corner, and the
+    /// indices in clockwise rotation, bottom-left to top-right.
+    ///
+    /// 3---2 2
+    /// |  / /|
+    /// | / / |
+    /// |/ /  |
+    /// 0 0---1
+    ///
+    /// Indices: 0 1 2 2 3 0
+    pub fn to_vertices(&self, color: Color) -> ([Vertex; 4], [u16; 6]) {
+        let vertices = [
+            Vertex {
+                position: self.position,
+                color,
+            },
+            Vertex {
+                position: self.position + float2(self.width(), 0.0),
+                color,
+            },
+            Vertex {
+                position: self.position + self.extent,
+                color,
+            },
+            Vertex {
+                position: self.position + float2(0.0, self.height()),
+                color,
+            },
+        ];
+
+        let indices = [0, 1, 2, 2, 3, 0];
+
+        (vertices, indices)
+    }
+}
