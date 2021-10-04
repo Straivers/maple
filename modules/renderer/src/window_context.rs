@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use ash::vk;
 
 use crate::constants::{DEFAULT_GPU_BUFFER_SIZE, FRAMES_IN_FLIGHT};
-use crate::effect::EffectBase;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 #[must_use]
@@ -201,7 +200,6 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         context: &mut vulkan_utils::Context,
         window_handle: WindowHandle,
         framebuffer_size: PhysicalSize,
-        presentation_effect: &mut dyn EffectBase,
     ) -> Self {
         let surface = context.create_surface(window_handle);
 
@@ -211,7 +209,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
         context.allocate_command_buffers(command_pool, &mut command_buffers);
 
-        let mut window_context = Self {
+        Self {
             current_image: 0,
             current_frame: 0,
             surface,
@@ -222,11 +220,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
                 FrameObjects::new(context, command_buffers[0]),
                 FrameObjects::new(context, command_buffers[1]),
             ],
-        };
-
-        let effect = presentation_effect.get_effect(context, window_context.swapchain.format);
-        window_context.create_frames(context, effect.render_pass());
-        window_context
+        }
     }
 
     pub fn destroy(mut self, context: &mut vulkan_utils::Context) {
@@ -253,12 +247,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         self.swapchain.format
     }
 
-    pub fn resize(
-        &mut self,
-        context: &vulkan_utils::Context,
-        fb_size: PhysicalSize,
-        presentation_effect: &mut dyn EffectBase,
-    ) {
+    pub fn resize(&mut self, context: &vulkan_utils::Context, fb_size: PhysicalSize) {
         let fences = [self.sync_objects[0].fence, self.sync_objects[1].fence];
         let _ = context.wait_for_fences(&fences, u64::MAX);
 
@@ -268,60 +257,11 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         for frame in self.frames.drain(0..) {
             frame.destroy(context);
         }
-
-        let effect = presentation_effect.get_effect(context, self.swapchain.format);
-        self.create_frames(context, effect.render_pass());
     }
 
-    /// Returns None if resizing failed
-    pub fn next_frame(
-        &mut self,
-        context: &vulkan_utils::Context,
-        target_size: PhysicalSize,
-        presentation_effect: &mut dyn EffectBase,
-    ) -> Option<(&Frame, &mut FrameObjects<VertexType>)> {
-        let extent = physical_size_to_extent(target_size);
-
-        let _ = context.wait_for_fences(&[self.sync_objects[self.current_frame].fence], u64::MAX);
-
-        if extent != self.swapchain.image_size {
-            self.resize(context, target_size, presentation_effect);
-        }
-
-        let acquire_semaphore = self.sync_objects[self.current_frame].acquire_semaphore;
-
-        let image_index = {
-            let index = context.get_swapchain_image(&self.swapchain, acquire_semaphore);
-            if let Some(index) = index {
-                index
-            } else {
-                self.resize(context, target_size, presentation_effect);
-                context.get_swapchain_image(&self.swapchain, acquire_semaphore)?
-            }
-        };
-
-        if self.swapchain.image_size == extent {
-            self.current_image = image_index;
-            let frame = &self.frames[image_index as usize];
-            let objects = &mut self.sync_objects[self.current_frame];
-            context.reset_command_buffer(objects.command_buffer, false);
-            Some((frame, objects))
-        } else {
-            None
-        }
-    }
-
-    pub fn present(&mut self, context: &vulkan_utils::Context) {
-        context.present_swapchain_image(
-            &self.swapchain,
-            &[self.sync_objects[self.current_frame].present_semaphore],
-            self.current_image,
-        );
-
-        self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT;
-    }
-
-    fn create_frames(&mut self, context: &vulkan_utils::Context, render_pass: vk::RenderPass) {
+    /// Recreates the swapchain's framebuffers after a call to `next_frame()`
+    /// returns [None] to indicate a resize operation.
+    pub fn update_render_pass(&mut self, context: &vulkan_utils::Context, render_pass: vk::RenderPass) {
         assert!(self.frames.is_empty());
         self.frames.reserve(self.swapchain.images.len());
         for image in &self.swapchain.images {
@@ -333,6 +273,54 @@ impl<VertexType: Copy> WindowContext<VertexType> {
                 render_pass,
             ));
         }
+    }
+
+    /// Retrieves the next frame for this [WindowContext].
+    ///
+    /// If the window was resized since the last call to `next_frame()`, this
+    /// function will return [None]. If this happens, the surface's format may
+    /// have changed. Call `update_render_pass()` with a compatible render pass
+    /// before calling `next_frame()` again. It is a bug for it to fail a
+    /// second time.
+    pub fn next_frame(
+        &mut self,
+        context: &vulkan_utils::Context,
+        target_size: PhysicalSize,
+    ) -> Option<(&Frame, &mut FrameObjects<VertexType>)> {
+        assert!(!self.frames.is_empty(), "WindowContext::next_frame() was called with no frames, call update_render_pass() to create swapchain framebuffers!");
+        let extent = physical_size_to_extent(target_size);
+
+        let _ = context.wait_for_fences(&[self.sync_objects[self.current_frame].fence], u64::MAX);
+
+        if extent != self.swapchain.image_size {
+            self.resize(context, target_size);
+            return None;
+        }
+
+        let acquire_semaphore = self.sync_objects[self.current_frame].acquire_semaphore;
+
+        let image_index = if let Some(index) = context.get_swapchain_image(&self.swapchain, acquire_semaphore) {
+            index
+        } else {
+            self.resize(context, target_size);
+            return None;
+        };
+
+        self.current_image = image_index;
+        let frame = &self.frames[image_index as usize];
+        let objects = &mut self.sync_objects[self.current_frame];
+        context.reset_command_buffer(objects.command_buffer, false);
+        Some((frame, objects))
+    }
+
+    pub fn present(&mut self, context: &vulkan_utils::Context) {
+        context.present_swapchain_image(
+            &self.swapchain,
+            &[self.sync_objects[self.current_frame].present_semaphore],
+            self.current_image,
+        );
+
+        self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT;
     }
 }
 

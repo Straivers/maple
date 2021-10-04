@@ -7,8 +7,8 @@ use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
 use vulkan_utils::CommandRecorder;
 
-use crate::effect::{Effect, EffectBase};
 use crate::color::Color;
+use crate::effect::{Effect, EffectBase};
 use crate::geometry::float2;
 use crate::window_context::{physical_size_to_extent, WindowContext};
 
@@ -100,7 +100,12 @@ impl Renderer {
         window_handle: WindowHandle,
         framebuffer_size: PhysicalSize,
     ) -> WindowContext<Vertex> {
-        WindowContext::new(&mut self.vulkan, window_handle, framebuffer_size, &mut self.effect_base)
+        let mut window = WindowContext::new(&mut self.vulkan, window_handle, framebuffer_size);
+        window.update_render_pass(
+            &self.vulkan,
+            self.effect_base.get_effect(&self.vulkan, window.format()).render_pass(),
+        );
+        window
     }
 
     pub fn destroy_swapchain(&mut self, swapchain: WindowContext<Vertex>) {
@@ -124,9 +129,19 @@ impl Renderer {
 
         let target_extent = physical_size_to_extent(target_size);
 
-        let (frame, frame_objects) = swapchain
-            .next_frame(&mut self.vulkan, target_size, &mut self.effect_base)
-            .unwrap();
+        let (frame, frame_objects) = if let Some(pair) = swapchain.next_frame(&self.vulkan, target_size) {
+            pair
+        } else {
+            swapchain.update_render_pass(
+                &self.vulkan,
+                self.effect_base
+                    .get_effect(&self.vulkan, swapchain.format())
+                    .render_pass(),
+            );
+            swapchain
+                .next_frame(&self.vulkan, target_size)
+                .expect("WindowContext::next_frame() should not fail after resize operation")
+        };
 
         frame_objects.copy_data_to_gpu(&mut self.vulkan, vertices, indices);
 
@@ -170,7 +185,7 @@ impl Renderer {
                 .submit_to_graphics_queue(&[submit_info], frame_objects.fence);
         }
 
-        swapchain.present(&mut self.vulkan);
+        swapchain.present(&self.vulkan);
     }
 }
 

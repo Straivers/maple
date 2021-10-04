@@ -29,7 +29,7 @@ impl<'a> CommandRecorder<'a> {
     pub fn begin_render_pass(&self, render_pass_info: &vk::RenderPassBeginInfo, subpass_contents: vk::SubpassContents) {
         unsafe {
             self.device
-                .cmd_begin_render_pass(self.buffer, &render_pass_info, subpass_contents);
+                .cmd_begin_render_pass(self.buffer, render_pass_info, subpass_contents);
         }
     }
 
