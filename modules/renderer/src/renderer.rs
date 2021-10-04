@@ -8,6 +8,7 @@ use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 use vulkan_utils::CommandRecorder;
 
 use crate::effect::{Effect, EffectBase};
+use crate::geometry::float2;
 use crate::vertex::Vertex;
 use crate::window_context::{physical_size_to_extent, WindowContext};
 
@@ -71,9 +72,11 @@ impl Renderer {
 
         cmd.begin();
 
+        let pipeline_layout = self.effect_base.pipeline_layout;
         self.effect_base.get_effect(&self.vulkan, frame.image_format).apply(
             &cmd,
             frame.frame_buffer,
+            pipeline_layout,
             viewport_rect,
             indices.len().try_into().expect("Number of vertices exceeds u32::MAX"),
             frame_objects.vertex_buffer(),
@@ -106,6 +109,7 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
+        unsafe { self.vulkan.device.device_wait_idle().expect("Unexpected error") };
         RenderEffectBase::destroy(std::mem::take(&mut self.effect_base), &self.vulkan);
     }
 }
@@ -125,7 +129,13 @@ impl RenderEffectBase {
         let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER);
 
         let pipeline_layout = {
-            let create_info = vk::PipelineLayoutCreateInfo::builder();
+            let push_constants = [vk::PushConstantRange {
+                offset: 0,
+                size: std::mem::size_of::<float2>() as u32,
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+            }];
+
+            let create_info = vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants);
             context.create_pipeline_layout(&create_info)
         };
 
@@ -205,6 +215,7 @@ impl Effect for RenderEffect {
         &self,
         cmd: &CommandRecorder,
         target: vk::Framebuffer,
+        layout: vk::PipelineLayout,
         target_rect: vk::Rect2D,
         num_indices: u32,
         vertex_buffer: (vk::Buffer, vk::DeviceSize),
@@ -244,6 +255,14 @@ impl Effect for RenderEffect {
         }]);
 
         cmd.set_scissor(&[target_rect]);
+
+        let scale = float2(
+            2.0 / target_rect.extent.width as f32,
+            2.0 / target_rect.extent.height as f32,
+        );
+
+        cmd.push_constants(layout, vk::ShaderStageFlags::VERTEX, 0, &scale);
+
         cmd.draw_indexed(num_indices, 1, 0, 0, 0);
         cmd.end_render_pass();
     }

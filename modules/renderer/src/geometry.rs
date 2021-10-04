@@ -2,6 +2,7 @@ use std::{fmt::Debug, ops::Add};
 
 #[derive(PartialEq, Clone, Copy)]
 #[allow(non_camel_case_types)]
+#[repr(C)]
 pub struct float2(pub f32, pub f32);
 
 impl float2 {
@@ -31,6 +32,7 @@ impl Add for float2 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub position: float2,
     pub extent: float2,

@@ -7,6 +7,7 @@ pub trait Effect {
         &self,
         cmd: &CommandRecorder,
         target: vk::Framebuffer,
+        layout: vk::PipelineLayout,
         target_rect: vk::Rect2D,
         num_indices: u32,
         vertex_buffer: (vk::Buffer, vk::DeviceSize),

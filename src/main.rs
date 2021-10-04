@@ -92,8 +92,8 @@ impl Drop for AppState {
 
 fn run(cli_options: &CliOptions) {
     let rectangle = Rect {
-        position: float2(-0.5, -0.5),
-        extent: float2(1.0, 1.0),
+        position: float2(100.0, 100.0),
+        extent: float2(400.0, 100.0),
     };
 
     let (vertices, indices) = rectangle.to_vertices(Color::rgb(128, 128, 128));

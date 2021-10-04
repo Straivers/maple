@@ -71,6 +71,20 @@ impl<'a> CommandRecorder<'a> {
         }
     }
 
+    pub fn push_constants<T>(
+        &self,
+        layout: vk::PipelineLayout,
+        stage: vk::ShaderStageFlags,
+        offset: u32,
+        constant: &T,
+    ) {
+        unsafe {
+            let bytes = std::slice::from_raw_parts(constant as *const T as *const u8, std::mem::size_of::<T>());
+            self.device
+                .cmd_push_constants(self.buffer, layout, stage, offset, bytes);
+        }
+    }
+
     pub fn draw_indexed(
         &self,
         index_count: u32,
