@@ -154,6 +154,9 @@ fn run(cli_options: &CliOptions) {
                 app_state.renderer.end_frame();
             }
             WindowEvent::Update {} => {}
+            WindowEvent::MouseButton { window, button, state } => {
+                println!("{:?}: {:?}", button, state);
+            }
         }
         EventLoopControl::Continue
     });

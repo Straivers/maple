@@ -12,15 +12,15 @@ use win32::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
         LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_HIDE,
-        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_QUIT, WM_SIZE, WNDCLASSW,
-        WS_OVERLAPPEDWINDOW,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
     },
 };
 
 use crate::{
     dpi::PhysicalSize,
     window::{EventLoopControl, EventLoopProxy},
-    window_event::WindowEvent,
+    window_event::{ButtonState, MouseButton, WindowEvent},
     window_handle::WindowHandle,
 };
 
@@ -165,6 +165,10 @@ impl EventLoop {
         EventLoopProxy { event_loop: self }
     }
 
+    fn dispatch(&self, event: WindowEvent) {
+        self.control.set(self.callback.borrow_mut()(&self.proxy(), event));
+    }
+
     /// The default-unsafe wndproc callback. Event handling is forwarded to the
     /// default-safe `wndproc()`.
     #[allow(clippy::similar_names)]
@@ -193,10 +197,7 @@ impl EventLoop {
 
         match msg {
             WM_CLOSE => {
-                event_loop.control.set(event_loop.callback.borrow_mut()(
-                    &event_loop.proxy(),
-                    WindowEvent::CloseRequested { window: window_handle },
-                ));
+                event_loop.dispatch(WindowEvent::CloseRequested { window: window_handle });
             }
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
@@ -208,13 +209,10 @@ impl EventLoop {
                     .expect("Window height is negative or > 65535");
 
                 // We need to guard against an empty callback
-                event_loop.control.set(event_loop.callback.borrow_mut()(
-                    &event_loop.proxy(),
-                    WindowEvent::Resized {
-                        window: window_handle,
-                        size: PhysicalSize { width, height },
-                    },
-                ));
+                event_loop.dispatch(WindowEvent::Resized {
+                    window: window_handle,
+                    size: PhysicalSize { width, height },
+                });
             }
             WM_CREATE => {
                 let mut rect = RECT::default();
@@ -227,13 +225,10 @@ impl EventLoop {
                     .try_into()
                     .expect("Window heigth is negative or > 65535");
 
-                event_loop.control.set(event_loop.callback.borrow_mut()(
-                    &event_loop.proxy(),
-                    WindowEvent::Created {
-                        window: window_handle,
-                        size: PhysicalSize { width, height },
-                    },
-                ));
+                event_loop.dispatch(WindowEvent::Created {
+                    window: window_handle,
+                    size: PhysicalSize { width, height },
+                });
             }
             WM_DESTROY => {
                 if event_loop.num_windows() == 0 {
@@ -245,6 +240,48 @@ impl EventLoop {
                   https://stackoverflow.com/questions/53000291/how-to-smooth-ugly-jitter-flicker-jumping-when-resizing-windows-especially-drag
                 */
                 return LRESULT(1);
+            }
+            WM_LBUTTONDOWN => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Left,
+                    state: ButtonState::Pressed,
+                });
+            }
+            WM_LBUTTONUP => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Left,
+                    state: ButtonState::Released,
+                });
+            }
+            WM_MBUTTONDOWN => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Middle,
+                    state: ButtonState::Pressed,
+                });
+            }
+            WM_MBUTTONUP => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Middle,
+                    state: ButtonState::Released,
+                });
+            }
+            WM_RBUTTONDOWN => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Right,
+                    state: ButtonState::Pressed,
+                });
+            }
+            WM_RBUTTONUP => {
+                event_loop.dispatch(WindowEvent::MouseButton {
+                    window: window_handle,
+                    button: MouseButton::Right,
+                    state: ButtonState::Released,
+                });
             }
             _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }

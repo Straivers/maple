@@ -5,7 +5,7 @@ use ash::vk;
 use sys::library::Library;
 use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
-use vulkan_utils::{Vulkan, CommandRecorder};
+use vulkan_utils::{CommandRecorder, Vulkan};
 
 use crate::color::Color;
 use crate::effect::{Effect, EffectBase};
