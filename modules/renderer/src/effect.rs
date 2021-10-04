@@ -16,9 +16,9 @@ pub trait Effect {
 }
 
 pub trait EffectBase {
-    fn cleanup(&mut self, context: &vulkan_utils::Context);
+    fn cleanup(&mut self, vulkan: &vulkan_utils::Vulkan);
 
-    fn destroy(self, context: &vulkan_utils::Context);
+    fn destroy(self, vulkan: &vulkan_utils::Vulkan);
 
-    fn get_effect(&mut self, context: &vulkan_utils::Context, format: vk::Format) -> &dyn Effect;
+    fn get_effect(&mut self, vulkan: &vulkan_utils::Vulkan, format: vk::Format) -> &dyn Effect;
 }

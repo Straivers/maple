@@ -1,4 +1,4 @@
-use super::context::{load_vk_objects, Context};
+use super::vulkan::{load_vk_objects, Vulkan};
 
 use ash::vk;
 const PREFERRED_SWAPCHAIN_LENGTH: u32 = 3;
@@ -46,33 +46,33 @@ impl SwapchainData {
     /// tested for surface support through platform-specific methods (e.g. the
     /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
     /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(context: &mut Context, surface: vk::SurfaceKHR, extent: vk::Extent2D) -> Self {
+    pub fn new(vulkan: &mut Vulkan, surface: vk::SurfaceKHR, extent: vk::Extent2D) -> Self {
         // We test with platform-specific APIs during surface creation
         assert!(unsafe {
-            context.surface_api.get_physical_device_surface_support(
-                context.gpu.handle,
-                context.gpu.present_queue_index,
+            vulkan.surface_api.get_physical_device_surface_support(
+                vulkan.gpu.handle,
+                vulkan.gpu.present_queue_index,
                 surface,
             )
         }
         .unwrap_or(false));
 
-        context.create_or_resize_swapchain(surface, extent, None)
+        vulkan.create_or_resize_swapchain(surface, extent, None)
     }
 
-    pub fn destroy(self, context: &mut Context) {
+    pub fn destroy(self, vulkan: &mut Vulkan) {
         unsafe {
-            context.swapchain_api.destroy_swapchain(self.handle, None);
+            vulkan.swapchain_api.destroy_swapchain(self.handle, None);
         }
     }
 
-    pub fn resize(&mut self, context: &Context, surface: vk::SurfaceKHR, extent: vk::Extent2D) {
+    pub fn resize(&mut self, vulkan: &Vulkan, surface: vk::SurfaceKHR, extent: vk::Extent2D) {
         *self =
-            context.create_or_resize_swapchain(surface, extent, Some((self.handle, std::mem::take(&mut self.images))));
+            vulkan.create_or_resize_swapchain(surface, extent, Some((self.handle, std::mem::take(&mut self.images))));
     }
 }
 
-impl Context {
+impl Vulkan {
     #[cfg(target_os = "windows")]
     #[must_use]
     pub fn create_surface(&self, window_handle: sys::window_handle::WindowHandle) -> vk::SurfaceKHR {

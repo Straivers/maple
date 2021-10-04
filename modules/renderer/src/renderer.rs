@@ -10,7 +10,7 @@ use vulkan_utils::CommandRecorder;
 use crate::color::Color;
 use crate::effect::{Effect, EffectBase};
 use crate::geometry::float2;
-use crate::window_context::{physical_size_to_extent, WindowContext};
+use crate::window_context::WindowContext;
 
 pub const TRIANGLE_VERTEX_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_vert.spv");
 pub const TRIANGLE_FRAGMENT_SHADER: &[u8] = include_bytes!("../shaders/simple_vertex_frag.spv");
@@ -83,13 +83,13 @@ impl crate::geometry::Rect {
 }
 
 pub struct Renderer {
-    vulkan: vulkan_utils::Context,
+    vulkan: vulkan_utils::Vulkan,
     effect_base: RenderEffectBase,
 }
 
 impl Renderer {
     pub fn new(vulkan_library: Library, debug_mode: bool) -> Self {
-        let mut vulkan = vulkan_utils::Context::new(vulkan_library, debug_mode);
+        let mut vulkan = vulkan_utils::Vulkan::new(vulkan_library, debug_mode);
         let effect_base = RenderEffectBase::new(&mut vulkan);
 
         Self { vulkan, effect_base }
@@ -100,7 +100,11 @@ impl Renderer {
         window_handle: WindowHandle,
         framebuffer_size: PhysicalSize,
     ) -> WindowContext<Vertex> {
-        let mut window = WindowContext::new(&mut self.vulkan, window_handle, framebuffer_size);
+        let mut window = WindowContext::new(
+            &mut self.vulkan,
+            window_handle,
+            physical_size_to_extent(framebuffer_size),
+        );
         window.update_render_pass(
             &self.vulkan,
             self.effect_base.get_effect(&self.vulkan, window.format()).render_pass(),
@@ -127,9 +131,9 @@ impl Renderer {
             return;
         }
 
-        let target_extent = physical_size_to_extent(target_size);
+        let window_extent = physical_size_to_extent(target_size);
 
-        let (frame, frame_objects) = if let Some(pair) = swapchain.next_frame(&self.vulkan, target_size) {
+        let (frame, frame_objects) = if let Some(pair) = swapchain.next_frame(&self.vulkan, window_extent) {
             pair
         } else {
             swapchain.update_render_pass(
@@ -139,7 +143,7 @@ impl Renderer {
                     .render_pass(),
             );
             swapchain
-                .next_frame(&self.vulkan, target_size)
+                .next_frame(&self.vulkan, window_extent)
                 .expect("WindowContext::next_frame() should not fail after resize operation")
         };
 
@@ -147,7 +151,7 @@ impl Renderer {
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: target_extent,
+            extent: window_extent,
         };
 
         let cmd = self.vulkan.record_command_buffer(frame_objects.command_buffer);
@@ -206,9 +210,9 @@ struct RenderEffectBase {
 }
 
 impl RenderEffectBase {
-    fn new(context: &mut vulkan_utils::Context) -> Self {
-        let vertex_shader = context.create_shader(TRIANGLE_VERTEX_SHADER);
-        let fragment_shader = context.create_shader(TRIANGLE_FRAGMENT_SHADER);
+    fn new(vulkan: &mut vulkan_utils::Vulkan) -> Self {
+        let vertex_shader = vulkan.create_shader(TRIANGLE_VERTEX_SHADER);
+        let fragment_shader = vulkan.create_shader(TRIANGLE_FRAGMENT_SHADER);
 
         let pipeline_layout = {
             let push_constants = [vk::PushConstantRange {
@@ -218,7 +222,7 @@ impl RenderEffectBase {
             }];
 
             let create_info = vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants);
-            context.create_pipeline_layout(&create_info)
+            vulkan.create_pipeline_layout(&create_info)
         };
 
         Self {
@@ -232,33 +236,33 @@ impl RenderEffectBase {
 }
 
 impl EffectBase for RenderEffectBase {
-    fn cleanup(&mut self, context: &vulkan_utils::Context) {
+    fn cleanup(&mut self, vulkan: &vulkan_utils::Vulkan) {
         self.generation += 1;
 
         let generation = self.generation;
         self.effects.retain(|_, effect| {
             let keep = effect.generation + 2 >= generation;
             if !keep {
-                context.destroy_render_pass(effect.render_pass);
-                context.destroy_pipeline(effect.pipeline);
+                vulkan.destroy_render_pass(effect.render_pass);
+                vulkan.destroy_pipeline(effect.pipeline);
             }
             keep
         });
     }
 
-    fn destroy(mut self, context: &vulkan_utils::Context) {
-        self.cleanup(context);
+    fn destroy(mut self, vulkan: &vulkan_utils::Vulkan) {
+        self.cleanup(vulkan);
         assert!(
             self.effects.is_empty(),
             "Cannot destroy effect base while its derivations are in use!"
         );
 
-        context.destroy_shader(self.vertex_shader);
-        context.destroy_shader(self.fragment_shader);
-        context.destroy_pipeline_layout(self.pipeline_layout);
+        vulkan.destroy_shader(self.vertex_shader);
+        vulkan.destroy_shader(self.fragment_shader);
+        vulkan.destroy_pipeline_layout(self.pipeline_layout);
     }
 
-    fn get_effect(&mut self, context: &vulkan_utils::Context, output_format: vk::Format) -> &dyn Effect {
+    fn get_effect(&mut self, vulkan: &vulkan_utils::Vulkan, output_format: vk::Format) -> &dyn Effect {
         // These are copied out so that `self` doesn't have to be borrowed in
         // `or_insert_with()`
         let generation = self.generation;
@@ -267,8 +271,8 @@ impl EffectBase for RenderEffectBase {
         let pipeline_layout = self.pipeline_layout;
 
         let entry = self.effects.entry(output_format).or_insert_with(|| {
-            let render_pass = create_renderpass(context, output_format);
-            let pipeline = create_pipeline(context, vertex_shader, fragment_shader, render_pass, pipeline_layout);
+            let render_pass = create_renderpass(vulkan, output_format);
+            let pipeline = create_pipeline(vulkan, vertex_shader, fragment_shader, render_pass, pipeline_layout);
 
             RenderEffect {
                 render_pass,
@@ -350,7 +354,7 @@ impl Effect for RenderEffect {
     }
 }
 
-fn create_renderpass(context: &vulkan_utils::Context, format: vk::Format) -> vk::RenderPass {
+fn create_renderpass(vulkan: &vulkan_utils::Vulkan, format: vk::Format) -> vk::RenderPass {
     let attachments = [vk::AttachmentDescription::builder()
         .format(format)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -386,11 +390,11 @@ fn create_renderpass(context: &vulkan_utils::Context, format: vk::Format) -> vk:
         .subpasses(&subpasses)
         .dependencies(&dependencies);
 
-    context.create_render_pass(&create_info)
+    vulkan.create_render_pass(&create_info)
 }
 
 fn create_pipeline(
-    context: &vulkan_utils::Context,
+    vulkan: &vulkan_utils::Vulkan,
     vertex_shader: vk::ShaderModule,
     fragment_shader: vk::ShaderModule,
     render_pass: vk::RenderPass,
@@ -467,5 +471,12 @@ fn create_pipeline(
         .render_pass(render_pass)
         .subpass(0);
 
-    context.create_graphics_pipeline(&create_info)
+    vulkan.create_graphics_pipeline(&create_info)
+}
+
+pub fn physical_size_to_extent(size: sys::dpi::PhysicalSize) -> vk::Extent2D {
+    vk::Extent2D {
+        width: u32::from(size.width),
+        height: u32::from(size.height),
+    }
 }

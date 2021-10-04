@@ -50,7 +50,7 @@ impl VulkanDebug {
     }
 }
 
-pub struct Context {
+pub struct Vulkan {
     #[allow(dead_code)]
     library: EntryCustom<Library>,
     instance: Instance,
@@ -74,7 +74,7 @@ pub struct Context {
     debug: Option<VulkanDebug>,
 }
 
-impl Context {
+impl Vulkan {
     /// Initializes a new vulkan context.
     /// Note: The selected GPU is guaranteed to support surface creation.
     #[must_use]
@@ -449,9 +449,9 @@ impl Context {
         unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
     }
 
-    pub fn destroy_frame_buffer(&self, framebuffer: vk::Framebuffer) {
+    pub fn destroy_frame_buffer(&self, frame_buffer: vk::Framebuffer) {
         unsafe {
-            self.device.destroy_framebuffer(framebuffer, None);
+            self.device.destroy_framebuffer(frame_buffer, None);
         }
     }
 
@@ -539,7 +539,7 @@ impl Context {
     }
 }
 
-impl Drop for Context {
+impl Drop for Vulkan {
     fn drop(&mut self) {
         unsafe {
             // We're shutting down, so ignore errors
