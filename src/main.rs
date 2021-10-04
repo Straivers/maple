@@ -16,8 +16,7 @@ use clap::{App, Arg};
 use renderer::{
     color::Color,
     geometry::{float2, Rect},
-    vertex::Vertex,
-    Renderer, WindowContext,
+    Renderer, Vertex, WindowContext,
 };
 
 use sys::{
