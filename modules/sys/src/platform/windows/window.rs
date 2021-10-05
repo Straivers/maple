@@ -14,6 +14,7 @@ use win32::{
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_HIDE,
         SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP,
         WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
+        WM_MOUSEMOVE,
     },
 };
 
@@ -282,6 +283,15 @@ impl EventLoop {
                     button: MouseButton::Right,
                     state: ButtonState::Released,
                 });
+            }
+            WM_MOUSEMOVE => {
+                let x = lparam.0 as i16;
+                let y = (lparam.0 >> 16) as i16;
+                event_loop.dispatch(WindowEvent::MouseMove {
+                    window: window_handle,
+                    x,
+                    y,
+                })
             }
             _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }

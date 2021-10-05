@@ -40,6 +40,11 @@ pub enum WindowEvent {
         button: MouseButton,
         state: ButtonState,
     },
+    MouseMove {
+        window: WindowHandle,
+        x: i16,
+        y: i16,
+    },
     Redraw {},
     Update {},
 }
