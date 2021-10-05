@@ -45,6 +45,12 @@ pub enum WindowEvent {
         x: i16,
         y: i16,
     },
+    MouseWheel {
+        window: WindowHandle,
+        /// The number of lines scrolled. Negative for towards user, positive
+        /// for away from user; may be less than `abs(1)`.
+        delta: f32,
+    },
     Redraw {},
     Update {},
 }

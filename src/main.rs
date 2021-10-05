@@ -158,6 +158,9 @@ fn run(cli_options: &CliOptions) {
                 println!("{:?}: {:?}", button, state);
             }
             WindowEvent::MouseMove { window: _, x: _, y: _ } => {}
+            WindowEvent::MouseWheel { window: _, delta} => {
+                // println!("Delta: {}", delta);
+            }
         }
         EventLoopControl::Continue
     });

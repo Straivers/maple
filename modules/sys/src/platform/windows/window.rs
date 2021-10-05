@@ -14,7 +14,7 @@ use win32::{
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, SW_HIDE,
         SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP,
         WM_QUIT, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
-        WM_MOUSEMOVE,
+        WM_MOUSEMOVE, WM_MOUSEWHEEL, WHEEL_DELTA,
     },
 };
 
@@ -205,7 +205,7 @@ impl EventLoop {
                 let width = (lparam.0 as i16)
                     .try_into()
                     .expect("Window width is negative or > 65535");
-                let height = ((lparam.0 >> i16::BITS) & 0xFFFF)
+                let height = (lparam.0 >> i16::BITS)
                     .try_into()
                     .expect("Window height is negative or > 65535");
 
@@ -291,6 +291,12 @@ impl EventLoop {
                     window: window_handle,
                     x,
                     y,
+                })
+            }
+            WM_MOUSEWHEEL => {
+                event_loop.dispatch(WindowEvent::MouseWheel {
+                    window: window_handle,
+                    delta: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32)
                 })
             }
             _ => return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
