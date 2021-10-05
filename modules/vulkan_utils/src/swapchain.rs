@@ -234,10 +234,13 @@ impl Vulkan {
             self.swapchain_api
                 .acquire_next_image(swapchain.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
         } {
-            Ok((index, _)) => {
-                // swapchain.image_index = Some(index);
-                // swapchain.image_index
-                Some(index)
+            Ok((index, is_suboptimal)) => {
+                if is_suboptimal {
+                    None
+                }
+                else {
+                    Some(index)
+                }
             }
             Err(vkr) => match vkr {
                 vk::Result::ERROR_OUT_OF_DATE_KHR => None,
