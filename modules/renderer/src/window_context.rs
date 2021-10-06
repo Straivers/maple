@@ -198,7 +198,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
     pub fn new(vulkan: &mut Vulkan, window_handle: WindowHandle, window_extent: vk::Extent2D) -> Self {
         let surface = vulkan.create_surface(window_handle);
 
-        let swapchain = vulkan_utils::SwapchainData::new(vulkan, surface, window_extent);
+        let swapchain = vulkan.create_or_resize_swapchain(surface, window_extent, None);;
 
         let command_pool = vulkan.create_graphics_command_pool(true, true);
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
@@ -226,7 +226,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
             frame.destroy(vulkan);
         }
 
-        self.swapchain.destroy(vulkan);
+        vulkan.destroy_swapchain(self.swapchain);
         vulkan.destroy_surface(self.surface);
 
         let command_buffers = [
@@ -309,7 +309,9 @@ impl<VertexType: Copy> WindowContext<VertexType> {
         let fences = [self.sync_objects[0].fence, self.sync_objects[1].fence];
         let _ = vulkan.wait_for_fences(&fences, u64::MAX);
 
-        self.swapchain.resize(vulkan, self.surface, window_extent);
+        // self.swapchain.resize(vulkan, self.surface, window_extent);
+        let old = Some((self.swapchain.handle, std::mem::take(&mut self.swapchain.images)));
+        self.swapchain = vulkan.create_or_resize_swapchain(self.surface, window_extent, old);
 
         for frame in self.frames.drain(0..) {
             frame.destroy(vulkan);

@@ -23,55 +23,6 @@ pub struct SwapchainData {
     // image_index: Option<u32>,
 }
 
-impl SwapchainData {
-    /// Creates a new swapchain for the given window, as well as associated
-    /// semaphores needed when acquiring and presenting swapchain images.
-    ///
-    /// # Errors
-    /// Swapchain creation may fail for the following reasons:
-    ///
-    /// - `VK_ERROR_OUT_OF_HOST_MEMORY`
-    /// - `VK_ERROR_OUT_OF_DEVICE_MEMORY`
-    /// - `VK_ERROR_SURFACE_LOST`
-    /// - `VK_ERROR_DEVICE_LOST`
-    /// - `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`
-    /// - `VK_ERROR_INITIALIZATION_FAILED`
-    ///
-    /// In addition to fallible Vulkan API calls, this function will also return
-    /// `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR` if the passed `WindowRef` is not
-    /// valid.
-    ///
-    /// # Panics
-    /// This function assumes that the initialized device in `context` was
-    /// tested for surface support through platform-specific methods (e.g. the
-    /// `vkGetPhysicalDeviceWin32PresentationSupportKHR` function), and will
-    /// panic if the device does not support creating `VkSurface`s.
-    pub fn new(vulkan: &mut Vulkan, surface: vk::SurfaceKHR, extent: vk::Extent2D) -> Self {
-        // We test with platform-specific APIs during surface creation
-        assert!(unsafe {
-            vulkan.surface_api.get_physical_device_surface_support(
-                vulkan.gpu.handle,
-                vulkan.gpu.present_queue_index,
-                surface,
-            )
-        }
-        .unwrap_or(false));
-
-        vulkan.create_or_resize_swapchain(surface, extent, None)
-    }
-
-    pub fn destroy(self, vulkan: &mut Vulkan) {
-        unsafe {
-            vulkan.swapchain_api.destroy_swapchain(self.handle, None);
-        }
-    }
-
-    pub fn resize(&mut self, vulkan: &Vulkan, surface: vk::SurfaceKHR, extent: vk::Extent2D) {
-        *self =
-            vulkan.create_or_resize_swapchain(surface, extent, Some((self.handle, std::mem::take(&mut self.images))));
-    }
-}
-
 impl Vulkan {
     #[cfg(target_os = "windows")]
     #[must_use]
@@ -96,6 +47,15 @@ impl Vulkan {
         size: vk::Extent2D,
         old: Option<(vk::SwapchainKHR, Vec<vk::Image>)>,
     ) -> SwapchainData {
+        assert!(unsafe {
+            self.surface_api.get_physical_device_surface_support(
+                self.gpu.handle,
+                self.gpu.present_queue_index,
+                surface,
+            )
+        }
+        .unwrap_or(false));
+
         let capabilities = unsafe {
             self.surface_api
                 .get_physical_device_surface_capabilities(self.gpu.handle, surface)
