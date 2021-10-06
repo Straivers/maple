@@ -197,8 +197,7 @@ pub struct WindowContext<VertexType: Copy> {
 impl<VertexType: Copy> WindowContext<VertexType> {
     pub fn new(vulkan: &mut Vulkan, window_handle: WindowHandle, window_extent: vk::Extent2D) -> Self {
         let surface = vulkan.create_surface(window_handle);
-
-        let swapchain = vulkan.create_or_resize_swapchain(surface, window_extent, None);;
+        let swapchain = vulkan.create_swapchain(surface, window_extent);
 
         let command_pool = vulkan.create_graphics_command_pool(true, true);
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
@@ -311,7 +310,7 @@ impl<VertexType: Copy> WindowContext<VertexType> {
 
         // self.swapchain.resize(vulkan, self.surface, window_extent);
         let old = Some((self.swapchain.handle, std::mem::take(&mut self.swapchain.images)));
-        self.swapchain = vulkan.create_or_resize_swapchain(self.surface, window_extent, old);
+        self.swapchain = vulkan.resize_swapchain(self.surface, window_extent, old);
 
         for frame in self.frames.drain(0..) {
             frame.destroy(vulkan);

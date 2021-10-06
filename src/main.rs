@@ -154,11 +154,15 @@ fn run(cli_options: &CliOptions) {
                 app_state.renderer.end_frame();
             }
             WindowEvent::Update {} => {}
-            WindowEvent::MouseButton { window: _, button, state } => {
+            WindowEvent::MouseButton {
+                window: _,
+                button,
+                state,
+            } => {
                 println!("{:?}: {:?}", button, state);
             }
             WindowEvent::MouseMove { window: _, x: _, y: _ } => {}
-            WindowEvent::MouseWheel { window: _, delta} => {
+            WindowEvent::MouseWheel { window: _, delta } => {
                 // println!("Delta: {}", delta);
             }
         }

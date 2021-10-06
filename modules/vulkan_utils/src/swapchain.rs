@@ -3,6 +3,7 @@ use super::vulkan::{load_vk_objects, Vulkan};
 use ash::vk;
 const PREFERRED_SWAPCHAIN_LENGTH: u32 = 3;
 
+#[must_use]
 #[derive(Debug, Default)]
 pub struct SwapchainData {
     /// The format of the swapchain's images.
@@ -40,19 +41,28 @@ impl Vulkan {
         }
     }
 
-    #[must_use]
-    pub fn create_or_resize_swapchain(
+    pub fn create_swapchain(&self, surface: vk::SurfaceKHR, extent: vk::Extent2D) -> SwapchainData {
+        self.create_or_resize_swapchain(surface, extent, None)
+    }
+
+    pub fn resize_swapchain(
+        &self,
+        surface: vk::SurfaceKHR,
+        size: vk::Extent2D,
+        old: Option<(vk::SwapchainKHR, Vec<vk::Image>)>,
+    ) -> SwapchainData {
+        self.create_or_resize_swapchain(surface, size, old)
+    }
+
+    fn create_or_resize_swapchain(
         &self,
         surface: vk::SurfaceKHR,
         size: vk::Extent2D,
         old: Option<(vk::SwapchainKHR, Vec<vk::Image>)>,
     ) -> SwapchainData {
         assert!(unsafe {
-            self.surface_api.get_physical_device_surface_support(
-                self.gpu.handle,
-                self.gpu.present_queue_index,
-                surface,
-            )
+            self.surface_api
+                .get_physical_device_surface_support(self.gpu.handle, self.gpu.present_queue_index, surface)
         }
         .unwrap_or(false));
 
@@ -197,8 +207,7 @@ impl Vulkan {
             Ok((index, is_suboptimal)) => {
                 if is_suboptimal {
                     None
-                }
-                else {
+                } else {
                     Some(index)
                 }
             }
