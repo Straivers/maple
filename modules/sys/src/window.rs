@@ -7,14 +7,8 @@ use crate::{platform::window as platform, window_handle::WindowHandle};
 pub enum EventLoopControl {
     /// Stops the event loop and causes it to return.
     Stop,
-    /// Pauses the event loop until a user action or OS event occurs.
-    Wait,
     /// Continues running the event loop in a polling fashion.
     Continue,
-    /// Continues the event loop with a new update frequency.
-    UpdateFreq { ticks_per_second: u32 },
-    /// Continues the event loop with a new frame rate.
-    RedrawFreq { frames_per_second: u32 },
 }
 
 /// A platform-dependent event loop for processing window events.

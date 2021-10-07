@@ -242,7 +242,9 @@ impl<VertexType: Copy> WindowContext<VertexType> {
     }
 
     /// Recreates the swapchain's framebuffers after a call to `next_frame()`
-    /// returns [None] to indicate a resize operation.
+    /// returns [None] to indicate a resize operation. This is necessary in case
+    /// the swapchain's format changes between frames, such as when moving
+    /// between windows with different color spaces.
     pub fn update_render_pass(&mut self, vulkan: &Vulkan, render_pass: vk::RenderPass) {
         assert!(self.frames.is_empty());
         self.frames.reserve(self.swapchain.images.len());

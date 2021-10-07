@@ -71,6 +71,8 @@ dependencies = [
  "embed-resource",
  "renderer",
  "sys",
+ "utils",
+ "win32",
 ]
 
 [[package]]

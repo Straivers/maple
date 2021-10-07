@@ -17,6 +17,12 @@ fn build_apis() {
                     GetLastError,
                     SetErrorMode,
                 },
+                Threading::{
+                    MsgWaitForMultipleObjects
+                },
+                WindowsProgramming::{
+                    INFINITE
+                }
             },
             UI::{
                 WindowsAndMessaging::{

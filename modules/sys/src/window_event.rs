@@ -28,6 +28,9 @@ pub enum WindowEvent {
         window: WindowHandle,
         size: PhysicalSize,
     },
+    Destroyed {
+        window: WindowHandle,
+    },
     CloseRequested {
         window: WindowHandle,
     },
