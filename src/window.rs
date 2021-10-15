@@ -1,8 +1,4 @@
-use std::{
-    convert::TryInto,
-    sync::mpsc::Sender,
-    thread::{self, JoinHandle},
-};
+use std::convert::TryInto;
 
 use sys::{
     dpi::PhysicalSize,
@@ -24,8 +20,6 @@ use win32::{
     },
 };
 
-use crate::ui_thread;
-
 const WNDCLASS_NAME: &str = "maple_wndclass";
 
 /// The maximum number of bytes that the window title can be, in UTF-8 code
@@ -34,29 +28,36 @@ const WNDCLASS_NAME: &str = "maple_wndclass";
 /// That is to say: at most 255 bytes, plus the '\0' character.
 pub const MAX_TITLE_LENGTH: usize = 256;
 
-pub(crate) fn spawn_window<Callback>(sender: Sender<u32>, title: &str, callback: Callback) -> JoinHandle<()>
-where
-    Callback: Send + Sync + 'static + FnMut(&ui_thread::WindowControl, WindowEvent) -> EventLoopControl,
-{
-    let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(title);
-    thread::spawn(move || {
-        let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
+pub struct WindowControl {
+    handle: WindowHandle,
+}
 
-        let hinstance = unsafe { GetModuleHandleW(None) };
-        assert_ne!(hinstance, HINSTANCE::NULL);
+pub fn window<Callback>(title: String, callback: Callback)
+where
+    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
+{
+    let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
+
+    let hinstance = unsafe { GetModuleHandleW(None) };
+    assert_ne!(hinstance, HINSTANCE::NULL);
+
+    {
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
 
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW,
             hInstance: hinstance,
-            lpfnWndProc: Some(wndproc_trampoline::<Callback>),
+            lpfnWndProc: Some(wndproc_trampoline),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
             hCursor: cursor,
             ..WNDCLASSW::default()
         };
 
         let _ = unsafe { RegisterClassW(&class) };
+    }
 
+    let hwnd = {
+        let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(&title);
         let hwnd = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -73,112 +74,96 @@ where
                 std::ptr::null_mut(),
             )
         };
+        hwnd
+    };
 
-        let mut window = Window {
-            callback: callback,
-            control: ui_thread::WindowControl {
-                control: WindowControl {
-                    handle: WindowHandle {
-                        hwnd: hwnd.0 as _,
-                        hinstance: hinstance.0 as _,
-                    },
-                },
-            },
-        };
+    let mut window = Window {
+        callback,
+        control: WindowControl {
+            handle: WindowHandle { hwnd: hwnd.0 as _, hinstance: hinstance.0 as _ },
+        },
+    };
 
-        unsafe {
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, &window as *const Window<Callback> as _);
-            ShowWindow(hwnd, SW_SHOW);
-        }
+    let mut window_t = Box::new(&window as &dyn WindowT);
 
-        {
-            let mut rect = RECT::default();
-            unsafe { GetWindowRect(hwnd, &mut rect) };
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, &mut window_t as *mut _ as _);
+        ShowWindow(hwnd, SW_SHOW);
+    }
 
-            let width = (rect.right - rect.left)
-                .try_into()
-                .expect("Window width is negative or > 65535");
-            let height = (rect.bottom - rect.top)
-                .try_into()
-                .expect("Window heigth is negative or > 65535");
-            window.dispatch(WindowEvent::Created {
-                window: window.control.control.handle,
-                size: PhysicalSize { width, height },
-            });
-        }
+    {
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut rect) };
 
-        let mut msg = MSG::default();
-        unsafe {
-            loop {
-                MsgWaitForMultipleObjects(0, std::ptr::null(), false, INFINITE, QS_ALLEVENTS);
-                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
-                    if msg.message == WM_QUIT {
-                        DestroyWindow(hwnd);
-                        sender.send(0).expect("Main thread exited before UI thread!");
-                        return;
-                    }
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
+        let width = (rect.right - rect.left)
+            .try_into()
+            .expect("Window width is negative or > 65535");
+        let height = (rect.bottom - rect.top)
+            .try_into()
+            .expect("Window heigth is negative or > 65535");
+        window.dispatch(WindowEvent::Created {
+            window: window.control.handle,
+            size: PhysicalSize { width, height },
+        });
+    }
+
+    let mut msg = MSG::default();
+    unsafe {
+        loop {
+            MsgWaitForMultipleObjects(0, std::ptr::null(), false, INFINITE, QS_ALLEVENTS);
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
+                if msg.message == WM_QUIT {
+                    DestroyWindow(hwnd);
+                    return;
                 }
-
-                window.dispatch(WindowEvent::Redraw {})
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
             }
+
+            window.dispatch(WindowEvent::Redraw {})
         }
-    })
+    }
 }
 
 struct Window<Callback>
 where
-    Callback: FnMut(&ui_thread::WindowControl, WindowEvent) -> EventLoopControl,
+    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
 {
     callback: Callback,
-    control: ui_thread::WindowControl,
+    control: WindowControl,
 }
 
-impl<Callback> Window<Callback>
+impl<Callback> WindowT for Window<Callback>
 where
-    Callback: FnMut(&ui_thread::WindowControl, WindowEvent) -> EventLoopControl,
+    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
 {
+    fn handle(&self) -> WindowHandle {
+        self.control.handle
+    }
+
     fn dispatch(&mut self, event: WindowEvent) {
-        if (self.callback)(&self.control, event) == EventLoopControl::Stop {
+        let op = (self.callback)(&self.control, event);
+
+        if op == EventLoopControl::Stop {
             unsafe { PostQuitMessage(0) };
         }
     }
 }
 
-pub(crate) struct WindowControl {
-    handle: WindowHandle,
+trait WindowT {
+    fn handle(&self) -> WindowHandle;
+
+    fn dispatch(&mut self, event: WindowEvent);
 }
 
-fn to_wstr<const MAX_LENGTH: usize>(s: &str) -> ArrayVec<u16, MAX_LENGTH> {
-    assert!(MAX_LENGTH > 0);
-
-    let mut buffer = s.encode_utf16().collect::<ArrayVec<_, MAX_LENGTH>>();
-    let len = buffer.len();
-
-    if len == buffer.capacity() {
-        buffer[len - 1] = 0;
-    } else {
-        buffer.push(0);
-    }
-
-    buffer
-}
-
-/// The default-unsafe wndproc callback. Event handling is forwarded to the
-/// default-safe `wndproc()`.
-#[allow(clippy::similar_names)]
-unsafe extern "system" fn wndproc_trampoline<Callback>(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT
-where
-    Callback: FnMut(&ui_thread::WindowControl, WindowEvent) -> EventLoopControl,
-{
-    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Window<Callback>;
+unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Box<dyn WindowT>;
 
     if window_ptr.is_null() {
         DefWindowProcW(hwnd, msg, wparam, lparam)
     } else {
         let window = &mut (*window_ptr);
-        let handle = window.control.control.handle;
+        let handle = window.handle();
 
         match msg {
             WM_CREATE => {
@@ -272,4 +257,19 @@ where
 
         LRESULT::default()
     }
+}
+
+fn to_wstr<const MAX_LENGTH: usize>(s: &str) -> ArrayVec<u16, MAX_LENGTH> {
+    assert!(MAX_LENGTH > 0);
+
+    let mut buffer = s.encode_utf16().collect::<ArrayVec<_, MAX_LENGTH>>();
+    let len = buffer.len();
+
+    if len == buffer.capacity() {
+        buffer[len - 1] = 0;
+    } else {
+        buffer.push(0);
+    }
+
+    buffer
 }
