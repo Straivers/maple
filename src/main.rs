@@ -72,7 +72,7 @@ async fn run(cli_options: &CliOptions) -> Result<(), Box<dyn std::error::Error>>
     });
 
     spawn_window("Title 1", send.clone());
-    // spawn_window("Title 2", send.clone());
+    spawn_window("Title 2", send.clone());
 
     Ok(closer.await?)
 }
@@ -103,6 +103,9 @@ pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<bool>) -> t
                     ack_send.blocking_send(false).unwrap();
                     return EventLoopControl::Stop
                 }
+                WindowEvent::CloseRequested { window } => {
+                    control.destroy(window);
+                },
                 WindowEvent::Redraw {} => {
                     // let render_request = context.unwrap().make_request(ui.vertices, ui.indices);
 

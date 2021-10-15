@@ -32,6 +32,14 @@ pub struct WindowControl {
     handle: WindowHandle,
 }
 
+impl WindowControl {
+    pub fn destroy(&self, window: WindowHandle) {
+        unsafe {
+            DestroyWindow(HWND(window.hwnd as _));
+        }
+    }
+}
+
 pub fn window<Callback>(title: String, callback: Callback)
 where
     Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
@@ -84,13 +92,6 @@ where
         },
     };
 
-    let mut window_t = Box::new(&window as &dyn WindowT);
-
-    unsafe {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, &mut window_t as *mut _ as _);
-        ShowWindow(hwnd, SW_SHOW);
-    }
-
     {
         let mut rect = RECT::default();
         unsafe { GetWindowRect(hwnd, &mut rect) };
@@ -105,6 +106,17 @@ where
             window: window.control.handle,
             size: PhysicalSize { width, height },
         });
+    }
+
+    // Is there a way to make sure both window_trait and window_trait_ptr are on the same cache line?
+    // Fat pointer
+    let mut window_trait: &mut dyn WindowT = &mut window;
+    // Pointer to fat pointer
+    let window_trait_ptr: *mut &mut dyn WindowT = &mut window_trait;
+
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, window_trait_ptr as _);
+        ShowWindow(hwnd, SW_SHOW);
     }
 
     let mut msg = MSG::default();
@@ -157,12 +169,14 @@ trait WindowT {
 }
 
 unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Box<dyn WindowT>;
+    // Pointer to fat pointer
+    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut &mut dyn WindowT;
 
     if window_ptr.is_null() {
         DefWindowProcW(hwnd, msg, wparam, lparam)
     } else {
-        let window = &mut (*window_ptr);
+        // Reference to fat pointer
+        let window = &mut *window_ptr;
         let handle = window.handle();
 
         match msg {
