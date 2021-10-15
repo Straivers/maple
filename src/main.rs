@@ -18,6 +18,7 @@ use clap::{App, Arg};
 use tokio;
 
 mod window;
+mod renderer;
 
 #[derive(Debug)]
 struct CliOptions {
@@ -51,17 +52,23 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(&options).await
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum WindowStatus {
+    Unknown,
+    Created,
+    Destroyed,
+}
+
 async fn run(cli_options: &CliOptions) -> Result<(), Box<dyn std::error::Error>> {
-    let (send, mut receive) = tokio::sync::mpsc::channel::<bool>(64);
+    let (send, mut receive) = tokio::sync::mpsc::channel::<WindowStatus>(64);
     let closer = tokio::spawn(async move {
         let mut counter = 0;
 
         while let Some(v) = receive.recv().await {
-            if v  {
-                counter += 1;
-            }
-            else {
-                counter -= 1;
+            match v {
+                WindowStatus::Created => counter += 1,
+                WindowStatus::Destroyed => counter -= 1,
+                _ => unreachable!()
             }
 
             if counter == 0 {
@@ -77,7 +84,7 @@ async fn run(cli_options: &CliOptions) -> Result<(), Box<dyn std::error::Error>>
     Ok(closer.await?)
 }
 
-pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<bool>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<WindowStatus>) -> tokio::task::JoinHandle<()> {
     // let context = None;
     // let ui = ui_builder::new();
     // let ui_state = ui_state::new();
@@ -96,11 +103,11 @@ pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<bool>) -> t
                     //     }
                     //     _ => panic!("Unexpected renderer message!")
                     // }
-                    ack_send.blocking_send(true).unwrap();
+                    ack_send.blocking_send(WindowStatus::Created).unwrap();
                 }
                 WindowEvent::Destroyed { window } => {
                     // to_renderer.blocking_send(RendererMessage::WindowDestroyed{}).unwrap();
-                    ack_send.blocking_send(false).unwrap();
+                    ack_send.blocking_send(WindowStatus::Destroyed).unwrap();
                     return EventLoopControl::Stop
                 }
                 WindowEvent::CloseRequested { window } => {

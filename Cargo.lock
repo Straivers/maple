@@ -106,12 +106,14 @@ dependencies = [
 name = "maple"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "clap",
  "embed-resource",
  "renderer",
  "sys",
  "tokio",
  "utils",
+ "vulkan_utils",
  "win32",
 ]
 
