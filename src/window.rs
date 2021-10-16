@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::sync::Once;
 
 use sys::{
     dpi::PhysicalSize,
@@ -28,6 +29,8 @@ const WNDCLASS_NAME: &str = "maple_wndclass";
 /// That is to say: at most 255 bytes, plus the '\0' character.
 pub const MAX_TITLE_LENGTH: usize = 256;
 
+static REGISTER_CLASS: Once = Once::new();
+
 pub struct WindowControl {
     handle: WindowHandle,
 }
@@ -49,7 +52,7 @@ where
     let hinstance = unsafe { GetModuleHandleW(None) };
     assert_ne!(hinstance, HINSTANCE::NULL);
 
-    {
+    REGISTER_CLASS.call_once(|| {
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
 
         let class = WNDCLASSW {
@@ -62,11 +65,11 @@ where
         };
 
         let _ = unsafe { RegisterClassW(&class) };
-    }
+    });
 
     let hwnd = {
         let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(&title);
-        let hwnd = unsafe {
+        unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PWSTR(class_name.as_ptr() as *mut _),
@@ -81,8 +84,7 @@ where
                 GetModuleHandleW(None),
                 std::ptr::null_mut(),
             )
-        };
-        hwnd
+        }
     };
 
     let mut window = Window {
@@ -132,7 +134,7 @@ where
                 DispatchMessageW(&msg);
             }
 
-            window.dispatch(WindowEvent::Redraw {})
+            window.dispatch(WindowEvent::Redraw {});
         }
     }
 }
@@ -260,7 +262,7 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
             WM_MOUSEMOVE => {
                 let x = lparam.0 as i16;
                 let y = (lparam.0 >> 16) as i16;
-                window.dispatch(WindowEvent::MouseMove { window: handle, x, y })
+                window.dispatch(WindowEvent::MouseMove { window: handle, x, y });
             }
             WM_MOUSEWHEEL => window.dispatch(WindowEvent::MouseWheel {
                 window: handle,

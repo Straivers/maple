@@ -15,10 +15,6 @@ vulkan_utils = { path = "modules/vulkan_utils" }
 version = "2.33.3"
 default-features = false
 
-[dependencies.tokio]
-version = "1.12.0"
-features = ["rt-multi-thread", "sync", "parking_lot", "time", "macros"]
-
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "1.6.3"
 

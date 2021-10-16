@@ -15,7 +15,8 @@ use sys::{window::EventLoopControl, window_event::WindowEvent};
 
 use clap::{App, Arg};
 
-use tokio;
+// use tokio::{sync::{self, mpsc::{Sender, channel}}, task::{JoinHandle, spawn_blocking}};
+use std::{sync::mpsc::{Sender, channel}, thread::{JoinHandle, spawn}};
 
 mod window;
 mod renderer;
@@ -25,8 +26,7 @@ struct CliOptions {
     with_vulkan_validation: bool,
 }
 
-#[tokio::main]
-pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn main() {
     let matches = App::new("maple")
         .version("0.1.0")
         .version_short("v")
@@ -49,7 +49,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    run(&options).await
+    run(&options)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,41 +59,58 @@ pub enum WindowStatus {
     Destroyed,
 }
 
-async fn run(cli_options: &CliOptions) -> Result<(), Box<dyn std::error::Error>> {
-    let (send, mut receive) = tokio::sync::mpsc::channel::<WindowStatus>(64);
-    let closer = tokio::spawn(async move {
-        let mut counter = 0;
+fn run(_cli_options: &CliOptions) {
+    let (send, _receive) = channel::<WindowStatus>();
 
-        while let Some(v) = receive.recv().await {
-            match v {
-                WindowStatus::Created => counter += 1,
-                WindowStatus::Destroyed => counter -= 1,
-                _ => unreachable!()
-            }
+    let (render_thread, to_renderer) = spawn_renderer();
 
-            if counter == 0 {
-                receive.close();
-                break;
+    spawn_window("Title 1", send.clone(), to_renderer.clone());
+    spawn_window("Title 2", send.clone(), to_renderer.clone());
+
+    std::mem::drop(to_renderer);
+
+    render_thread.join().unwrap();
+}
+
+pub fn spawn_renderer() -> (JoinHandle<()>, Sender<renderer::RenderMessage>) {
+    // channels
+    let (to_renderer, from_windows) = channel::<renderer::RenderMessage>();
+    let joiner = spawn(move || {
+        let renderer = renderer::Renderer::new();
+
+        while let Ok(message) = from_windows.recv() {
+            match message {
+                renderer::RenderMessage::Empty => { println!("RM"); }
+                renderer::RenderMessage::SubmitAndPresent {
+                    ack,
+                    fence,
+                    commands,
+                    semaphore,
+                    swapchain,
+                    image_index,
+                    time_to_next_vsync: _
+                } => {
+                    renderer.submit(&[commands], &[fence]);
+                    renderer.present(&[swapchain], &[image_index], &[semaphore]);
+                    ack.send(renderer::RenderResponse::FramePresented).unwrap();
+                }
             }
         }
     });
 
-    spawn_window("Title 1", send.clone());
-    spawn_window("Title 2", send.clone());
-
-    Ok(closer.await?)
+    (joiner, to_renderer)
 }
 
-pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<WindowStatus>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_window(title: &str, _ack_send: Sender<WindowStatus>, to_renderer: Sender<renderer::RenderMessage>) -> JoinHandle<()> {
     // let context = None;
     // let ui = ui_builder::new();
     // let ui_state = ui_state::new();
     // let to_renderer = renderer.channel();
     let title = title.to_owned();
-    tokio::task::spawn_blocking(|| {
+    spawn(|| {
         window::window(title, move |control, event| {
             match event {
-                WindowEvent::Created { window, size } => {
+                WindowEvent::Created { window: _, size: _ } => {
                     // let (send, recv) = oneshot::channel();
                     // to_renderer.send(RendererMessage::NewWindow{ send });
 
@@ -103,11 +120,11 @@ pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<WindowStatu
                     //     }
                     //     _ => panic!("Unexpected renderer message!")
                     // }
-                    ack_send.blocking_send(WindowStatus::Created).unwrap();
+                    // ack_send.blocking_send(WindowStatus::Created).unwrap();
                 }
-                WindowEvent::Destroyed { window } => {
+                WindowEvent::Destroyed { window: _ } => {
                     // to_renderer.blocking_send(RendererMessage::WindowDestroyed{}).unwrap();
-                    ack_send.blocking_send(WindowStatus::Destroyed).unwrap();
+                    // ack_send.blocking_send(WindowStatus::Destroyed).unwrap();
                     return EventLoopControl::Stop
                 }
                 WindowEvent::CloseRequested { window } => {
@@ -123,6 +140,7 @@ pub fn spawn_window(title: &str, ack_send: tokio::sync::mpsc::Sender<WindowStatu
                     //     RendererMessage::RenderComplete => {}
                     //     _ => panic!("Unexpected renderer message!")
                     // }
+                    to_renderer.send(renderer::RenderMessage::Empty).unwrap();
                 }
                 _ => {}
             }

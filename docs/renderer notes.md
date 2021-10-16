@@ -18,10 +18,15 @@ multi-window rendering
             to_window must be passed to renderer on every send() op.
 
     window thread needs access to VkInstance
-        ...
+        create swapchain (get fences & semaphores)
+        wait for swapchain image
+        record command buffer
 
     windows are drawn every...
-        no more than 
+        no more than refresh rate
+        whenever there are input events that update UI state
+        on animation ticks (at refresh rate)
+            need to be able to get monitor refresh rate & update when window moves between monitors.
 
     renderer messages:
         SubmitAndPresent
