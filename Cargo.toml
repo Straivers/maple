@@ -10,6 +10,7 @@ renderer = { path = "modules/renderer" }
 utils = { path = "modules/utils" }
 ash = { version = "0.33", default-features = false }
 vulkan_utils = { path = "modules/vulkan_utils" }
+lazy_static = "1.4.0"
 
 [dependencies.clap]
 version = "2.33.3"

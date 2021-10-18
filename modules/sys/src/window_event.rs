@@ -54,6 +54,5 @@ pub enum WindowEvent {
         /// for away from user; may be less than `abs(1)`.
         delta: f32,
     },
-    Redraw {},
     Update {},
 }

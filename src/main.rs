@@ -1,6 +1,6 @@
 //! Maple Engine entry point
 
-use sys::{window::EventLoopControl, window_event::WindowEvent};
+use sys::{library::Library, window::EventLoopControl, window_event::WindowEvent};
 
 // shaders need to be built every time they change...
 // applications don't always know which shaders they're going to need ahead of time
@@ -15,39 +15,26 @@ use sys::{window::EventLoopControl, window_event::WindowEvent};
 
 use clap::{App, Arg};
 
-// use tokio::{sync::{self, mpsc::{Sender, channel}}, task::{JoinHandle, spawn_blocking}};
-use std::{sync::mpsc::{Sender, channel}, thread::{JoinHandle, spawn}};
+use core::panic;
+use std::{sync::mpsc::{Sender, channel, sync_channel}, thread::{spawn, JoinHandle}};
 
-mod window;
 mod renderer;
+mod window;
+
+const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
+    MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
 
 #[derive(Debug)]
-struct CliOptions {
-    with_vulkan_validation: bool,
-}
+struct CliOptions {}
 
 pub fn main() {
     let matches = App::new("maple")
         .version("0.1.0")
         .version_short("v")
-        .arg(
-            Arg::with_name("with_vulkan_validation")
-                .long_help("Toggles vulkan validation layers. You must have a recent installation of the Vulkan SDK. This is true by default in debug builds.")
-                .long("with-vulkan-validation")
-                .takes_value(true)
-                .possible_values(&["true", "false"]),
-        )
+        .after_help(ENVIRONMENT_VARIABLES_HELP)
         .get_matches();
 
-    let options = CliOptions {
-        with_vulkan_validation: {
-            if let Some(enable) = matches.value_of("with_vulkan_validation") {
-                enable.parse().unwrap()
-            } else {
-                cfg!(debug_assertions)
-            }
-        },
-    };
+    let options = CliOptions {};
 
     run(&options)
 }
@@ -59,7 +46,7 @@ pub enum WindowStatus {
     Destroyed,
 }
 
-fn run(_cli_options: &CliOptions) {
+fn run(cli_options: &CliOptions) {
     let (send, _receive) = channel::<WindowStatus>();
 
     let (render_thread, to_renderer) = spawn_renderer();
@@ -73,26 +60,24 @@ fn run(_cli_options: &CliOptions) {
 }
 
 pub fn spawn_renderer() -> (JoinHandle<()>, Sender<renderer::RenderMessage>) {
-    // channels
     let (to_renderer, from_windows) = channel::<renderer::RenderMessage>();
     let joiner = spawn(move || {
         let renderer = renderer::Renderer::new();
 
         while let Ok(message) = from_windows.recv() {
             match message {
-                renderer::RenderMessage::Empty => { println!("RM"); }
-                renderer::RenderMessage::SubmitAndPresent {
-                    ack,
+                renderer::RenderMessage::Empty => {
+                    println!("RM");
+                }
+                renderer::RenderMessage::Submit {
                     fence,
+                    wait_semaphore,
+                    signal_semaphore,
+                    ack,
                     commands,
-                    semaphore,
-                    swapchain,
-                    image_index,
-                    time_to_next_vsync: _
                 } => {
-                    renderer.submit(&[commands], &[fence]);
-                    renderer.present(&[swapchain], &[image_index], &[semaphore]);
-                    ack.send(renderer::RenderResponse::FramePresented).unwrap();
+                    renderer.submit(commands, wait_semaphore, signal_semaphore, fence);
+                    ack.send(renderer::RenderResponse::CommandsSubmitted).unwrap();
                 }
             }
         }
@@ -101,16 +86,24 @@ pub fn spawn_renderer() -> (JoinHandle<()>, Sender<renderer::RenderMessage>) {
     (joiner, to_renderer)
 }
 
-pub fn spawn_window(title: &str, _ack_send: Sender<WindowStatus>, to_renderer: Sender<renderer::RenderMessage>) -> JoinHandle<()> {
-    // let context = None;
-    // let ui = ui_builder::new();
+pub fn spawn_window(
+    title: &str,
+    _ack_send: Sender<WindowStatus>,
+    to_renderer: Sender<renderer::RenderMessage>,
+) -> JoinHandle<()> {
+    // let context = WindowContext::new();
     // let ui_state = ui_state::new();
-    // let to_renderer = renderer.channel();
+    let (to_window, from_renderer) = sync_channel::<renderer::RenderResponse>(1);
     let title = title.to_owned();
     spawn(|| {
         window::window(title, move |control, event| {
             match event {
                 WindowEvent::Created { window: _, size: _ } => {
+                    // context = WindowContext::init();
+
+                    // request renderer information
+                        // pipeline layout, shader modules
+
                     // let (send, recv) = oneshot::channel();
                     // to_renderer.send(RendererMessage::NewWindow{ send });
 
@@ -125,22 +118,36 @@ pub fn spawn_window(title: &str, _ack_send: Sender<WindowStatus>, to_renderer: S
                 WindowEvent::Destroyed { window: _ } => {
                     // to_renderer.blocking_send(RendererMessage::WindowDestroyed{}).unwrap();
                     // ack_send.blocking_send(WindowStatus::Destroyed).unwrap();
-                    return EventLoopControl::Stop
+                    return EventLoopControl::Stop;
                 }
                 WindowEvent::CloseRequested { window } => {
                     control.destroy(window);
-                },
-                WindowEvent::Redraw {} => {
-                    // let render_request = context.unwrap().make_request(ui.vertices, ui.indices);
+                }
+                WindowEvent::Resized { window, size } => {
+                    // let frame = get_swapchain_image()
+                    // ui.resize(size);
 
-                    // let (send, recv) = oneshot::channel();
-                    // to_renderer.send(RendererMessage::RenderRequest{ render_request, send });
-
-                    // match recv.recv() {
-                    //     RendererMessage::RenderComplete => {}
-                    //     _ => panic!("Unexpected renderer message!")
-                    // }
+                    // could this be integrated into WindowEvent::Update?
+                }
+                WindowEvent::Update {} => {
                     to_renderer.send(renderer::RenderMessage::Empty).unwrap();
+
+                    /*
+                    // let frame = get_swapchain_image()
+
+                    // ui_state.update(...);
+                    // let ui_builder = UiBuilder::new(frame.vertex_buffer, frame.index_buffer, &mut ui_state);
+                    // ui_callback(&ui_builder);
+
+                    let request = frame.to_submit_request(to_window);
+
+                    to_renderer.send(request);
+                    */
+
+                    match from_renderer.recv() {
+                        Ok(response) => {}
+                        Err(_) => unreachable!("Renderer closed contact pipe!")
+                    }
                 }
                 _ => {}
             }

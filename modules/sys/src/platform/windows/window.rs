@@ -120,7 +120,7 @@ impl EventLoop {
                 tick_lag -= msecs_per_tick;
             }
 
-            self.callback.borrow_mut()(&self.proxy(), WindowEvent::Redraw {});
+            self.callback.borrow_mut()(&self.proxy(), WindowEvent::Update {});
         }
     }
 

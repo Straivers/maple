@@ -25,7 +25,6 @@ use crate::CommandRecorder;
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
-const SYNC_POOL_SIZE: usize = 128;
 
 const VALIDATION_LAYER_NAME: *const c_char = "VK_LAYER_KHRONOS_validation\0".as_ptr().cast();
 const SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_surface\0".as_ptr().cast();
@@ -68,8 +67,6 @@ pub struct Vulkan {
     pub swapchain_api: Swapchain,
 
     pipeline_cache: vk::PipelineCache,
-    fence_pool: ArrayVec<vk::Fence, SYNC_POOL_SIZE>,
-    semaphore_pool: ArrayVec<vk::Semaphore, SYNC_POOL_SIZE>,
 
     debug: Option<VulkanDebug>,
 }
@@ -182,8 +179,6 @@ impl Vulkan {
             os_surface_api,
             swapchain_api,
             pipeline_cache,
-            fence_pool: ArrayVec::new(),
-            semaphore_pool: ArrayVec::new(),
             debug,
         }
     }
@@ -194,21 +189,17 @@ impl Vulkan {
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
-    pub fn get_or_create_fence(&mut self, signalled: bool) -> vk::Fence {
-        if !self.fence_pool.is_empty() && !signalled {
-            self.fence_pool.pop().unwrap()
-        } else {
-            let ci = vk::FenceCreateInfo {
-                flags: if signalled {
-                    vk::FenceCreateFlags::SIGNALED
-                } else {
-                    vk::FenceCreateFlags::empty()
-                },
-                ..Default::default()
-            };
+    pub fn create_fence(&mut self, signalled: bool) -> vk::Fence {
+        let ci = vk::FenceCreateInfo {
+            flags: if signalled {
+                vk::FenceCreateFlags::SIGNALED
+            } else {
+                vk::FenceCreateFlags::empty()
+            },
+            ..Default::default()
+        };
 
-            unsafe { self.device.create_fence(&ci, None).expect("Out of memory") }
-        }
+        unsafe { self.device.create_fence(&ci, None).expect("Out of memory") }
     }
 
     /// Returns a fence to the context's pool, or destroys it if the fence pool
@@ -216,12 +207,8 @@ impl Vulkan {
     pub fn free_fence(&mut self, fence: vk::Fence) {
         unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
 
-        if self.fence_pool.is_full() {
-            unsafe {
-                self.device.destroy_fence(fence, None);
-            }
-        } else {
-            self.fence_pool.push(fence);
+        unsafe {
+            self.device.destroy_fence(fence, None);
         }
     }
 
@@ -256,22 +243,16 @@ impl Vulkan {
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
-    pub fn get_or_create_semaphore(&mut self) -> vk::Semaphore {
-        self.semaphore_pool.pop().unwrap_or_else(|| {
-            let ci = vk::SemaphoreCreateInfo::builder();
-            unsafe { self.device.create_semaphore(&ci, None) }.expect("Out of memory")
-        })
+    pub fn create_semaphore(&mut self) -> vk::Semaphore {
+        let ci = vk::SemaphoreCreateInfo::builder();
+        unsafe { self.device.create_semaphore(&ci, None) }.expect("Out of memory")
     }
 
     /// Returns a semaphore to the context's pool, or destroys it if the
     /// semaphore pool is at capacity.
     pub fn free_semaphore(&mut self, semaphore: vk::Semaphore) {
-        if self.semaphore_pool.is_full() {
-            unsafe {
-                self.device.destroy_semaphore(semaphore, None);
-            }
-        } else {
-            self.semaphore_pool.push(semaphore);
+        unsafe {
+            self.device.destroy_semaphore(semaphore, None);
         }
     }
 
@@ -325,7 +306,7 @@ impl Vulkan {
                 .fp_v1_0()
                 .create_graphics_pipelines(
                     self.device.handle(),
-                    vk::PipelineCache::null(),
+                    self.pipeline_cache,
                     1,
                     create_info,
                     std::ptr::null(),
@@ -544,9 +525,6 @@ impl Drop for Vulkan {
         unsafe {
             // We're shutting down, so ignore errors
             let _ = self.device.device_wait_idle();
-
-            std::mem::take(&mut self.fence_pool).empty(|fence| self.device.destroy_fence(fence, None));
-            std::mem::take(&mut self.semaphore_pool).empty(|sem| self.device.destroy_semaphore(sem, None));
 
             if let Some(debug) = self.debug.as_ref() {
                 debug.api.destroy_debug_utils_messenger(debug.callback, None);

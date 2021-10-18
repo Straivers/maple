@@ -90,7 +90,10 @@ where
     let mut window = Window {
         callback,
         control: WindowControl {
-            handle: WindowHandle { hwnd: hwnd.0 as _, hinstance: hinstance.0 as _ },
+            handle: WindowHandle {
+                hwnd: hwnd.0 as _,
+                hinstance: hinstance.0 as _,
+            },
         },
     };
 
@@ -134,7 +137,7 @@ where
                 DispatchMessageW(&msg);
             }
 
-            window.dispatch(WindowEvent::Redraw {});
+            window.dispatch(WindowEvent::Update {});
         }
     }
 }

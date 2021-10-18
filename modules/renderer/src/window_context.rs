@@ -80,9 +80,9 @@ pub struct FrameObjects<VertexType: Copy> {
 impl<VertexType: Copy> FrameObjects<VertexType> {
     fn new(vulkan: &mut Vulkan, command_buffer: vk::CommandBuffer) -> Self {
         let mut objects = Self {
-            fence: vulkan.get_or_create_fence(true),
-            acquire_semaphore: vulkan.get_or_create_semaphore(),
-            present_semaphore: vulkan.get_or_create_semaphore(),
+            fence: vulkan.create_fence(true),
+            acquire_semaphore: vulkan.create_semaphore(),
+            present_semaphore: vulkan.create_semaphore(),
             command_buffer,
             buffer: vk::Buffer::null(),
             memory: vk::DeviceMemory::null(),
