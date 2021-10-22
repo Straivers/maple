@@ -50,11 +50,7 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    pub fn new(
-        fences: [vk::Fence; FRAMES_IN_FLIGHT],
-        wait_semaphores: [vk::Semaphore; FRAMES_IN_FLIGHT],
-        signal_semaphores: [vk::Semaphore; FRAMES_IN_FLIGHT],
-    ) -> Self {
+    pub fn new() -> Self {
         let command_pool = VULKAN.create_graphics_command_pool(true, true);
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
         VULKAN.allocate_command_buffers(command_pool, &mut command_buffers);
@@ -68,18 +64,18 @@ impl RenderContext {
             images: vec![],
             frames: [
                 Frame {
-                    fence: fences[0],
-                    acquire: wait_semaphores[0],
-                    present: signal_semaphores[0],
+                    fence: VULKAN.create_fence(true),
+                    acquire: VULKAN.create_semaphore(),
+                    present: VULKAN.create_semaphore(),
                     command_buffer: command_buffers[0],
                     buffer: vk::Buffer::null(),
                     memory: vk::DeviceMemory::null(),
                     buffer_size: 0,
                 },
                 Frame {
-                    fence: fences[1],
-                    acquire: wait_semaphores[1],
-                    present: signal_semaphores[1],
+                    fence: VULKAN.create_fence(true),
+                    acquire: VULKAN.create_semaphore(),
+                    present: VULKAN.create_semaphore(),
                     command_buffer: command_buffers[1],
                     buffer: vk::Buffer::null(),
                     memory: vk::DeviceMemory::null(),
@@ -118,7 +114,6 @@ impl RenderContext {
         let frame_id = self.frame_id as usize;
         let frame = &mut self.frames[frame_id];
         let _ = VULKAN.wait_for_fences(&[frame.fence], u64::MAX);
-        VULKAN.reset_fences(&[frame.fence]);
 
         if window_extent != self.swapchain.image_size {
             self.resize(window_extent);

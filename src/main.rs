@@ -1,19 +1,8 @@
 //! Maple Engine entry point
 
-use render_base::{Request, Response};
+use render_base::{Response};
 use render_context::RenderContext;
 use sys::{dpi::PhysicalSize, window::EventLoopControl, window_event::WindowEvent};
-
-// shaders need to be built every time they change...
-// applications don't always know which shaders they're going to need ahead of time
-// shaders should be compiled ahead of time for release
-// shaders should be recompiled on command during debug
-// maple runner is a debug-only tool right now, can afford runtime compilation
-
-// use std::{
-//     collections::HashMap,
-//     time::{Duration, Instant},
-// };
 
 use clap::App;
 
@@ -70,7 +59,7 @@ fn run(_cli_options: &CliOptions) {
 
 pub fn spawn_renderer() -> (JoinHandle<()>, Sender<(render_base::Request, SyncSender<Response>)>) {
     let (to_renderer, from_windows) = channel::<(render_base::Request, SyncSender<Response>)>();
-    
+
     let joiner = spawn(move || {
         let mut renderer = renderer::Renderer::new();
         while let Ok((message, response)) = from_windows.recv() {
@@ -91,19 +80,7 @@ pub fn spawn_window(
     let (to_window, from_renderer) = sync_channel::<render_base::Response>(1);
     let title = title.to_owned();
     spawn(move || {
-        to_renderer.send((Request::ContextInit, to_window.clone())).unwrap();
-
-        let mut context = if let Ok(Response::ContextInit {
-            fences,
-            wait_semaphores,
-            signal_semaphores,
-        }) = from_renderer.recv()
-        {
-            RenderContext::new(fences, wait_semaphores, signal_semaphores)
-        } else {
-            unreachable!()
-        };
-
+        let mut context = RenderContext::new();
         let mut window_size = PhysicalSize { width: 0, height: 0 };
 
         window::window(title, |control, event| {
@@ -129,8 +106,6 @@ pub fn spawn_window(
                     if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
                         to_renderer.send((request, to_window.clone())).unwrap();
                         let _ = from_renderer.recv();
-                        println!("rack");
-                        // context.present(&from_renderer.recv().unwrap());
                     }
                 }
                 WindowEvent::Update {} => {
@@ -140,8 +115,6 @@ pub fn spawn_window(
                     if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
                         to_renderer.send((request, to_window.clone())).unwrap();
                         let _ = from_renderer.recv();
-                        println!("uack");
-                        // context.present(&from_renderer.recv().unwrap());
                     }
                 }
                 _ => {}

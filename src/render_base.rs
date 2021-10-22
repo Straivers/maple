@@ -72,9 +72,6 @@ impl Vertex {
 #[must_use]
 #[derive(Debug)]
 pub enum Request {
-    /// Notifies the [Renderer](crate::renderer::Renderer) that a new context
-    /// has been created, and requests enough state to initialize a new context.
-    ContextInit,
     /// Requests that the [Renderer](crate::renderer::Renderer) submit a command
     /// buffer to the graphics queue for rendering.
     SubmitCommands {
@@ -90,13 +87,6 @@ pub enum Request {
 #[must_use]
 #[derive(Debug)]
 pub enum Response {
-    /// The response from the [Renderer](crate::renderer::Renderer) to a window
-    /// that submitted a [ContextInitRequest].
-    ContextInit {
-        fences: [vk::Fence; FRAMES_IN_FLIGHT],
-        wait_semaphores: [vk::Semaphore; FRAMES_IN_FLIGHT],
-        signal_semaphores: [vk::Semaphore; FRAMES_IN_FLIGHT],
-    },
     /// The [Renderer](crate::renderer::Renderer) has submitted the queue for
     /// rendering, and returns a fence that the window thread can use to wait
     /// until rendering is complete.

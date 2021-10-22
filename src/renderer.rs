@@ -6,32 +6,19 @@
 
 use ash::vk::{self, PresentInfoKHR};
 
-use utils::array_vec::ArrayVec;
-
 use crate::render_base::{Request, Response, VULKAN};
 
-pub struct Renderer {
-    signalled_fence_cache: ArrayVec<vk::Fence, 1024>,
-    semaphore_cache: ArrayVec<vk::Semaphore, 1024>,
-}
+pub struct Renderer {}
 
 impl Renderer {
     pub fn new() -> Self {
         lazy_static::initialize(&VULKAN);
 
-        Self {
-            signalled_fence_cache: ArrayVec::new(),
-            semaphore_cache: ArrayVec::new(),
-        }
+        Self {}
     }
 
     pub fn execute(&mut self, request: &Request) -> Response {
         match request {
-            Request::ContextInit => Response::ContextInit {
-                fences: [VULKAN.create_fence(true), VULKAN.create_fence(true)],
-                wait_semaphores: [VULKAN.create_semaphore(), VULKAN.create_semaphore()],
-                signal_semaphores: [VULKAN.create_semaphore(), VULKAN.create_semaphore()],
-            },
             &Request::SubmitCommands {
                 fence,
                 wait_semaphore,
@@ -47,7 +34,7 @@ impl Renderer {
                     .swapchains(&[swapchain])
                     .image_indices(&[image_id])
                     .build();
-                unsafe { VULKAN.swapchain_api.queue_present(VULKAN.graphics_queue, &ci) };
+                unsafe { VULKAN.swapchain_api.queue_present(VULKAN.graphics_queue, &ci) }.expect("Out of memory");
                 Response::CommandsSubmitted { image_id }
             }
         }
@@ -66,6 +53,7 @@ impl Renderer {
             p_command_buffers: &commands,
         };
 
+        VULKAN.reset_fences(&[fence]);
         VULKAN.submit_to_graphics_queue(&[submit_info], fence);
     }
 }
