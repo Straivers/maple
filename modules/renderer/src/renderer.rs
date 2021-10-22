@@ -147,7 +147,7 @@ impl Renderer {
                 .expect("WindowContext::next_frame() should not fail after resize operation")
         };
 
-        frame_objects.copy_data_to_gpu(&mut self.vulkan, vertices, indices);
+        frame_objects.copy_data_to_gpu(&self.vulkan, vertices, indices);
 
         let viewport_rect = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },

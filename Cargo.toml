@@ -19,6 +19,9 @@ default-features = false
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "1.6.3"
 
+[build-dependencies]
+shaderc = "0.7"
+
 [workspace]
 members = [
     "modules/renderer",

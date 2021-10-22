@@ -189,7 +189,7 @@ impl Vulkan {
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
-    pub fn create_fence(&mut self, signalled: bool) -> vk::Fence {
+    pub fn create_fence(&self, signalled: bool) -> vk::Fence {
         let ci = vk::FenceCreateInfo {
             flags: if signalled {
                 vk::FenceCreateFlags::SIGNALED
@@ -204,7 +204,7 @@ impl Vulkan {
 
     /// Returns a fence to the context's pool, or destroys it if the fence pool
     /// is at capacity.
-    pub fn free_fence(&mut self, fence: vk::Fence) {
+    pub fn free_fence(&self, fence: vk::Fence) {
         unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
 
         unsafe {
@@ -243,14 +243,14 @@ impl Vulkan {
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
-    pub fn create_semaphore(&mut self) -> vk::Semaphore {
+    pub fn create_semaphore(&self) -> vk::Semaphore {
         let ci = vk::SemaphoreCreateInfo::builder();
         unsafe { self.device.create_semaphore(&ci, None) }.expect("Out of memory")
     }
 
     /// Returns a semaphore to the context's pool, or destroys it if the
     /// semaphore pool is at capacity.
-    pub fn free_semaphore(&mut self, semaphore: vk::Semaphore) {
+    pub fn free_semaphore(&self, semaphore: vk::Semaphore) {
         unsafe {
             self.device.destroy_semaphore(semaphore, None);
         }

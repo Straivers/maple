@@ -78,6 +78,7 @@ dependencies = [
  "embed-resource",
  "lazy_static",
  "renderer",
+ "shaderc",
  "sys",
  "utils",
  "vulkan_utils",
