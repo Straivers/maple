@@ -18,8 +18,8 @@ impl Renderer {
     }
 
     pub fn execute(&mut self, request: &Request) -> Response {
-        match request {
-            &Request::SubmitCommands {
+        match *request {
+            Request::SubmitCommands {
                 fence,
                 wait_semaphore,
                 signal_semaphore,

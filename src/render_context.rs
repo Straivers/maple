@@ -1,14 +1,13 @@
+use crate::{dpi::PhysicalSize, window_handle::WindowHandle};
 ///! Types and functions for rendering on a per-window basis.
 use ash::vk;
-use sys::{dpi::PhysicalSize, window_handle::WindowHandle};
 
-use vulkan_utils::SwapchainData;
+use crate::swapchain::SwapchainData;
 
 use crate::{
     constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT},
     render_base::{
-        create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Response, Vertex,
-        PIPELINE_LAYOUT, VULKAN,
+        create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Vertex, PIPELINE_LAYOUT, VULKAN,
     },
 };
 
@@ -86,7 +85,7 @@ impl RenderContext {
         }
     }
 
-    pub fn bind(&mut self, window: WindowHandle, window_size: PhysicalSize) {
+    pub fn bind(&mut self, window: &WindowHandle, window_size: PhysicalSize) {
         let extent = to_extent(window_size);
         let surface = VULKAN.create_surface(window);
         let swapchain = VULKAN.create_swapchain(surface, extent);
@@ -167,20 +166,6 @@ impl RenderContext {
             swapchain: self.swapchain.handle,
             image_id: image_index as u32,
         })
-    }
-
-    pub fn present(&mut self, response: &Response) {
-        if let Response::CommandsSubmitted { image_id } = response {
-            VULKAN.present_swapchain_image(
-                &self.swapchain,
-                &[self.frames[self.frame_id as usize].present],
-                *image_id,
-            );
-
-            self.frame_id = (self.frame_id + 1) % (FRAMES_IN_FLIGHT as u8);
-        } else {
-            unreachable!("Queue submission produced unexpected response: {:?}", response);
-        }
     }
 
     fn resize(&mut self, window_extent: vk::Extent2D) {

@@ -3,11 +3,11 @@ use std::{ffi::CStr, process::abort};
 use ash::vk;
 use lazy_static::lazy_static;
 
-use renderer::{color::Color, geometry::float2};
-use sys::{dpi::PhysicalSize, library::Library};
-use vulkan_utils::{CommandRecorder, Vulkan};
+use crate::{
+    color::Color, dpi::PhysicalSize, geometry::float2, library::Library, recorder::CommandRecorder, vulkan::Vulkan,
+};
 
-use crate::constants::{FRAMES_IN_FLIGHT, TRIANGLE_FRAGMENT_SHADER_SPIRV, TRIANGLE_VERTEX_SHADER_SPIRV};
+use crate::constants::{TRIANGLE_FRAGMENT_SHADER_SPIRV, TRIANGLE_VERTEX_SHADER_SPIRV};
 
 lazy_static! {
     pub static ref VULKAN: Vulkan = {

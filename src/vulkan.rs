@@ -11,17 +11,10 @@ use ash::{
         ext::DebugUtils,
         khr::{Surface, Swapchain, Win32Surface},
     },
-    // version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk,
-    Device,
-    EntryCustom,
-    Instance,
+    vk, Device, EntryCustom, Instance,
 };
 
-use sys::library::Library;
-use utils::array_vec::ArrayVec;
-
-use crate::CommandRecorder;
+use crate::{array_vec::ArrayVec, library::Library, recorder::CommandRecorder};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;

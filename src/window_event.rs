@@ -1,4 +1,4 @@
-use crate::{dpi::PhysicalSize, window_handle::WindowHandle};
+use crate::dpi::PhysicalSize;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
@@ -25,31 +25,22 @@ fn button_state_size() {
 #[derive(Debug, Clone, Copy)]
 pub enum WindowEvent {
     Created {
-        window: WindowHandle,
         size: PhysicalSize,
     },
-    Destroyed {
-        window: WindowHandle,
-    },
-    CloseRequested {
-        window: WindowHandle,
-    },
+    Destroyed {},
+    CloseRequested {},
     Resized {
-        window: WindowHandle,
         size: PhysicalSize,
     },
     MouseButton {
-        window: WindowHandle,
         button: MouseButton,
         state: ButtonState,
     },
     MouseMove {
-        window: WindowHandle,
         x: i16,
         y: i16,
     },
     MouseWheel {
-        window: WindowHandle,
         /// The number of lines scrolled. Negative for towards user, positive
         /// for away from user; may be less than `abs(1)`.
         delta: f32,

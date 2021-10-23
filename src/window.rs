@@ -1,13 +1,11 @@
-use std::convert::TryInto;
-use std::sync::Once;
+use std::{convert::TryInto, sync::Once};
 
-use sys::{
+use crate::{
+    array_vec::ArrayVec,
     dpi::PhysicalSize,
-    window::EventLoopControl,
     window_event::{ButtonState, MouseButton, WindowEvent},
     window_handle::WindowHandle,
 };
-use utils::array_vec::ArrayVec;
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{LibraryLoader::GetModuleHandleW, Threading::MsgWaitForMultipleObjects, WindowsProgramming::INFINITE},
@@ -36,11 +34,21 @@ pub struct WindowControl {
 }
 
 impl WindowControl {
-    pub fn destroy(&self, window: WindowHandle) {
+    pub fn destroy(&self) {
         unsafe {
-            DestroyWindow(HWND(window.hwnd as _));
+            DestroyWindow(HWND(self.handle.hwnd as _));
         }
     }
+
+    pub fn handle(&self) -> &WindowHandle {
+        &self.handle
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EventLoopControl {
+    Continue,
+    Stop,
 }
 
 pub fn window<Callback>(title: String, callback: Callback)
@@ -108,7 +116,6 @@ where
             .try_into()
             .expect("Window heigth is negative or > 65535");
         window.dispatch(WindowEvent::Created {
-            window: window.control.handle,
             size: PhysicalSize { width, height },
         });
     }
@@ -182,7 +189,6 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
     } else {
         // Reference to fat pointer
         let window = &mut *window_ptr;
-        let handle = window.handle();
 
         match msg {
             WM_CREATE => {
@@ -190,15 +196,14 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                 let width = createstruct.cx.try_into().expect("Window width out of bounds!");
                 let height = createstruct.cy.try_into().expect("Window height out of bounds!");
                 window.dispatch(WindowEvent::Created {
-                    window: handle,
                     size: PhysicalSize { width, height },
                 });
             }
             WM_CLOSE => {
-                window.dispatch(WindowEvent::CloseRequested { window: handle });
+                window.dispatch(WindowEvent::CloseRequested {});
             }
             WM_DESTROY => {
-                window.dispatch(WindowEvent::Destroyed { window: handle });
+                window.dispatch(WindowEvent::Destroyed {});
             }
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
@@ -210,7 +215,6 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                     .expect("Window height is negative or > 65535");
 
                 window.dispatch(WindowEvent::Resized {
-                    window: handle,
                     size: PhysicalSize { width, height },
                 });
             }
@@ -222,42 +226,36 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
             }
             WM_LBUTTONDOWN => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Left,
                     state: ButtonState::Pressed,
                 });
             }
             WM_LBUTTONUP => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Left,
                     state: ButtonState::Released,
                 });
             }
             WM_MBUTTONDOWN => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Middle,
                     state: ButtonState::Pressed,
                 });
             }
             WM_MBUTTONUP => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Middle,
                     state: ButtonState::Released,
                 });
             }
             WM_RBUTTONDOWN => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Right,
                     state: ButtonState::Pressed,
                 });
             }
             WM_RBUTTONUP => {
                 window.dispatch(WindowEvent::MouseButton {
-                    window: handle,
                     button: MouseButton::Right,
                     state: ButtonState::Released,
                 });
@@ -265,10 +263,9 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
             WM_MOUSEMOVE => {
                 let x = lparam.0 as i16;
                 let y = (lparam.0 >> 16) as i16;
-                window.dispatch(WindowEvent::MouseMove { window: handle, x, y });
+                window.dispatch(WindowEvent::MouseMove { x, y });
             }
             WM_MOUSEWHEEL => window.dispatch(WindowEvent::MouseWheel {
-                window: handle,
                 delta: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
             }),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),

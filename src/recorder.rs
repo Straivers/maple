@@ -1,5 +1,4 @@
-use ash::vk;
-use ash::Device;
+use ash::{vk, Device};
 
 pub struct CommandRecorder<'a> {
     device: &'a Device,

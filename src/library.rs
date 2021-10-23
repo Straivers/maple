@@ -9,7 +9,7 @@ use win32::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Library {
+pub struct Library {
     library: HINSTANCE,
     path: String,
 }

@@ -1,10 +1,11 @@
 //! Maple Engine entry point
 
-use render_base::{Response};
+use crate::{dpi::PhysicalSize, window_event::WindowEvent};
+use render_base::Response;
 use render_context::RenderContext;
-use sys::{dpi::PhysicalSize, window::EventLoopControl, window_event::WindowEvent};
 
 use clap::App;
+use window::EventLoopControl;
 
 use std::{
     sync::mpsc::{channel, sync_channel, Sender, SyncSender},
@@ -13,11 +14,21 @@ use std::{
 
 use crate::render_base::to_extent;
 
+mod array_vec;
+mod color;
 mod constants;
+mod dpi;
+mod geometry;
+mod library;
+mod recorder;
 mod render_base;
 mod render_context;
 mod renderer;
+mod swapchain;
+mod vulkan;
 mod window;
+mod window_event;
+mod window_handle;
 
 const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -85,19 +96,17 @@ pub fn spawn_window(
 
         window::window(title, |control, event| {
             match event {
-                WindowEvent::Created { window, size } => {
+                WindowEvent::Created { size } => {
                     window_size = size;
-                    context.bind(window, size);
+                    context.bind(control.handle(), size);
                 }
-                WindowEvent::Destroyed { window: _ } => {
-                    // to_renderer.blocking_send(RendererMessage::WindowDestroyed{}).unwrap();
-                    // ack_send.blocking_send(WindowStatus::Destroyed).unwrap();
+                WindowEvent::Destroyed {} => {
                     return EventLoopControl::Stop;
                 }
-                WindowEvent::CloseRequested { window } => {
-                    control.destroy(window);
+                WindowEvent::CloseRequested {} => {
+                    control.destroy();
                 }
-                WindowEvent::Resized { window: _, size } => {
+                WindowEvent::Resized { size } => {
                     window_size = size;
 
                     let vertices = [];

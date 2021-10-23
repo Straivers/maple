@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sys = { path = "modules/sys" }
 win32 = { path = "modules/win32" }
-renderer = { path = "modules/renderer" }
-utils = { path = "modules/utils" }
 ash = { version = "0.33", default-features = false }
-vulkan_utils = { path = "modules/vulkan_utils" }
 lazy_static = "1.4.0"
 
 [dependencies.clap]
@@ -24,9 +20,5 @@ shaderc = "0.7"
 
 [workspace]
 members = [
-    "modules/renderer",
-    "modules/sys",
-    "modules/utils",
-    "modules/vulkan_utils",
     "modules/win32",
 ]

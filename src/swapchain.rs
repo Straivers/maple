@@ -27,7 +27,7 @@ pub struct SwapchainData {
 impl Vulkan {
     #[cfg(target_os = "windows")]
     #[must_use]
-    pub fn create_surface(&self, window_handle: sys::window_handle::WindowHandle) -> vk::SurfaceKHR {
+    pub fn create_surface(&self, window_handle: &crate::window_handle::WindowHandle) -> vk::SurfaceKHR {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
             .hwnd(window_handle.hwnd)
             .hinstance(window_handle.hinstance);
