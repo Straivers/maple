@@ -14,10 +14,11 @@ use ash::{
     vk, Device, EntryCustom, Instance,
 };
 
-use crate::{array_vec::ArrayVec, library::Library, recorder::CommandRecorder};
+use crate::{array_vec::ArrayVec, library::Library, recorder::CommandRecorder, window::WindowHandle};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
+const PREFERRED_SWAPCHAIN_LENGTH: u32 = 2;
 
 const VALIDATION_LAYER_NAME: *const c_char = "VK_LAYER_KHRONOS_validation\0".as_ptr().cast();
 const SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_surface\0".as_ptr().cast();
@@ -62,6 +63,23 @@ pub struct Vulkan {
     pipeline_cache: vk::PipelineCache,
 
     debug: Option<VulkanDebug>,
+}
+
+#[must_use]
+#[derive(Debug, Default)]
+pub struct SwapchainData {
+    /// The format of the swapchain's images.
+    pub format: vk::Format,
+
+    pub color_space: vk::ColorSpaceKHR,
+
+    /// The method by which the images are presented in the swapchain.
+    pub present_mode: vk::PresentModeKHR,
+
+    /// A handle to the swapchain, managed by the Vulkan drivers.
+    pub handle: vk::SwapchainKHR,
+
+    pub image_size: vk::Extent2D,
 }
 
 impl Vulkan {
@@ -176,6 +194,163 @@ impl Vulkan {
         }
     }
 
+    pub fn create_surface(&self, window_handle: &WindowHandle) -> vk::SurfaceKHR {
+        let ci = vk::Win32SurfaceCreateInfoKHR::builder()
+            .hwnd(window_handle.hwnd.0 as _)
+            .hinstance(window_handle.hinstance.0 as _);
+        unsafe { self.os_surface_api.create_win32_surface(&ci, None) }.expect("Out of memory")
+    }
+
+    pub fn destroy_surface(&self, surface: vk::SurfaceKHR) {
+        unsafe {
+            self.surface_api.destroy_surface(surface, None);
+        }
+    }
+
+    pub fn create_or_resize_swapchain(
+        &self,
+        surface: vk::SurfaceKHR,
+        size: vk::Extent2D,
+        old: Option<vk::SwapchainKHR>,
+    ) -> SwapchainData {
+        assert!(unsafe {
+            self.surface_api
+                .get_physical_device_surface_support(self.gpu.handle, self.gpu.present_queue_index, surface)
+        }
+        .unwrap_or(false));
+
+        let capabilities = unsafe {
+            self.surface_api
+                .get_physical_device_surface_capabilities(self.gpu.handle, surface)
+                .unwrap()
+        };
+
+        let format = {
+            let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
+                self.surface_api
+                    .fp()
+                    .get_physical_device_surface_formats_khr(self.gpu.handle, surface, count, ptr)
+            })
+            .unwrap();
+
+            *formats
+                .iter()
+                .find(|f| f.format == vk::Format::B8G8R8A8_SRGB && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                .unwrap_or(&formats[0])
+        };
+
+        let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
+            self.surface_api
+                .fp()
+                .get_physical_device_surface_present_modes_khr(self.gpu.handle, surface, count, ptr)
+        })
+        .unwrap()
+        .iter()
+        .find(|p| **p == vk::PresentModeKHR::MAILBOX)
+        .unwrap_or(&vk::PresentModeKHR::FIFO);
+
+        let image_size = {
+            if capabilities.current_extent.width == u32::MAX {
+                vk::Extent2D {
+                    width: size
+                        .width
+                        .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
+                    height: size.height.clamp(
+                        capabilities.min_image_extent.height,
+                        capabilities.max_image_extent.height,
+                    ),
+                }
+            } else {
+                capabilities.current_extent
+            }
+        };
+
+        let min_images = if capabilities.max_image_count == 0 {
+            if PREFERRED_SWAPCHAIN_LENGTH > capabilities.min_image_count {
+                PREFERRED_SWAPCHAIN_LENGTH
+            } else {
+                capabilities.min_image_count
+            }
+        } else {
+            PREFERRED_SWAPCHAIN_LENGTH.clamp(capabilities.min_image_count, capabilities.max_image_count)
+        };
+
+        let mut create_info = vk::SwapchainCreateInfoKHR::builder()
+            .surface(surface)
+            .min_image_count(min_images)
+            .image_format(format.format)
+            .image_color_space(format.color_space)
+            .image_extent(image_size)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .pre_transform(capabilities.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(present_mode)
+            .clipped(true);
+
+        let queue_family_indices = [self.gpu.graphics_queue_index, self.gpu.present_queue_index];
+        if queue_family_indices[0] == queue_family_indices[1] {
+            create_info.image_sharing_mode = vk::SharingMode::EXCLUSIVE;
+        } else {
+            create_info.image_sharing_mode = vk::SharingMode::CONCURRENT;
+            create_info.queue_family_index_count = 2;
+            create_info.p_queue_family_indices = queue_family_indices.as_ptr();
+        }
+
+        let old_swapchain = old.unwrap_or(vk::SwapchainKHR::null());
+        create_info.old_swapchain = old_swapchain;
+
+        let handle = unsafe { self.swapchain_api.create_swapchain(&create_info, None) }.unwrap();
+
+        if create_info.old_swapchain != vk::SwapchainKHR::null() {
+            unsafe {
+                self.swapchain_api.destroy_swapchain(create_info.old_swapchain, None);
+            }
+        }
+
+        SwapchainData {
+            handle,
+            format: format.format,
+            image_size,
+            color_space: format.color_space,
+            present_mode,
+        }
+    }
+
+    pub fn destroy_swapchain(&self, swapchain: SwapchainData) {
+        unsafe {
+            self.swapchain_api.destroy_swapchain(swapchain.handle, None);
+        }
+    }
+
+    pub fn get_swapchain_images<const N: usize>(&self, swapchain: vk::SwapchainKHR) -> ArrayVec<vk::Image, N> {
+        load_vk_objects(|count, buffer| unsafe {
+            self.swapchain_api
+                .fp()
+                .get_swapchain_images_khr(self.device.handle(), swapchain, count, buffer)
+        })
+        .unwrap()
+    }
+
+    pub fn acquire_swapchain_image(&self, swapchain: &SwapchainData, acquire_semaphore: vk::Semaphore) -> Option<u32> {
+        match unsafe {
+            self.swapchain_api
+                .acquire_next_image(swapchain.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
+        } {
+            Ok((index, is_suboptimal)) => {
+                if is_suboptimal {
+                    None
+                } else {
+                    Some(index)
+                }
+            }
+            Err(vkr) => match vkr {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => None,
+                any => panic!("Unexpected error {:?}", any),
+            },
+        }
+    }
+
     /// Fetches a fence from the context's pool, or creates a new one. If the
     /// fence needs to be signalled, a new one will be created.
     ///
@@ -267,24 +442,12 @@ impl Vulkan {
         }
     }
 
-    pub fn destroy_shader(&self, shader: vk::ShaderModule) {
-        unsafe {
-            self.device.destroy_shader_module(shader, None);
-        }
-    }
-
     /// # Panics
     /// Panics on out of memory conditions
     #[must_use]
     pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
         unsafe { self.device.create_pipeline_layout(create_info, None) }.expect("Out of memory")
-    }
-
-    pub fn destroy_pipeline_layout(&self, pipeline_layout: vk::PipelineLayout) {
-        unsafe {
-            self.device.destroy_pipeline_layout(pipeline_layout, None);
-        }
     }
 
     /// # Panics
@@ -336,21 +499,6 @@ impl Vulkan {
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
         unsafe { self.device.create_command_pool(&create_info, None) }.expect("Out of memory")
-    }
-
-    pub fn reset_command_pool(&self, pool: vk::CommandPool, release_memory: bool) {
-        unsafe {
-            self.device
-                .reset_command_pool(
-                    pool,
-                    if release_memory {
-                        vk::CommandPoolResetFlags::RELEASE_RESOURCES
-                    } else {
-                        vk::CommandPoolResetFlags::empty()
-                    },
-                )
-                .expect("Out of memory");
-        }
     }
 
     pub fn destroy_command_pool(&self, pool: vk::CommandPool) {

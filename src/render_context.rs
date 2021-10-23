@@ -1,15 +1,8 @@
-use crate::{dpi::PhysicalSize, window_handle::WindowHandle};
-///! Types and functions for rendering on a per-window basis.
 use ash::vk;
 
-use crate::swapchain::SwapchainData;
-
-use crate::{
-    constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT},
-    render_base::{
+use crate::{constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT, MAX_SWAPCHAIN_DEPTH}, dpi::PhysicalSize, render_base::{
         create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Vertex, PIPELINE_LAYOUT, VULKAN,
-    },
-};
+    }, vulkan::SwapchainData, window::WindowHandle};
 
 pub struct SwapchainImage {
     view: vk::ImageView,
@@ -34,10 +27,10 @@ pub struct Frame {
     buffer_size: vk::DeviceSize,
 }
 
-/// A [WindowContext] contains all render state needed for a window to
+/// A [RenderContext] contains all render state needed for a window to
 /// communicate with the renderer.
 #[derive(Default)]
-pub struct RenderContext {
+pub struct RendererWindow {
     surface: vk::SurfaceKHR,
     swapchain: SwapchainData,
     render_pass: vk::RenderPass,
@@ -48,7 +41,7 @@ pub struct RenderContext {
     frame_id: u8,
 }
 
-impl RenderContext {
+impl RendererWindow {
     pub fn new() -> Self {
         let command_pool = VULKAN.create_graphics_command_pool(true, true);
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
@@ -87,26 +80,13 @@ impl RenderContext {
 
     pub fn bind(&mut self, window: &WindowHandle, window_size: PhysicalSize) {
         let extent = to_extent(window_size);
-        let surface = VULKAN.create_surface(window);
-        let swapchain = VULKAN.create_swapchain(surface, extent);
 
-        let render_pass = create_render_pass(swapchain.format);
-        let pipeline = create_pipeline(*PIPELINE_LAYOUT, render_pass);
+        self.surface = VULKAN.create_surface(window);
+        self.swapchain = VULKAN.create_or_resize_swapchain(self.surface, extent, None);
+        self.render_pass = create_render_pass(self.swapchain.format);
+        self.pipeline = create_pipeline(*PIPELINE_LAYOUT, self.render_pass);
 
-        let mut images = vec![];
-        Self::init_images(
-            &swapchain.images,
-            swapchain.format,
-            swapchain.image_size,
-            render_pass,
-            &mut images,
-        );
-
-        self.surface = surface;
-        self.swapchain = swapchain;
-        self.render_pass = render_pass;
-        self.pipeline = pipeline;
-        self.images = images;
+        self.init_images();
     }
 
     pub fn draw(&mut self, window_extent: vk::Extent2D, vertices: &[Vertex], indices: &[u16]) -> Option<Request> {
@@ -121,7 +101,7 @@ impl RenderContext {
 
         let acquire_semaphore = frame.acquire;
 
-        let image_index = if let Some(index) = VULKAN.get_swapchain_image(&self.swapchain, acquire_semaphore) {
+        let image_index = if let Some(index) = VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore) {
             index as usize
         } else {
             self.resize(window_extent);
@@ -173,8 +153,7 @@ impl RenderContext {
         let _ = VULKAN.wait_for_fences(&fences, u64::MAX);
 
         let old_format = self.swapchain.format;
-        let old = Some((self.swapchain.handle, std::mem::take(&mut self.swapchain.images)));
-        self.swapchain = VULKAN.resize_swapchain(self.surface, window_extent, old);
+        self.swapchain = VULKAN.create_or_resize_swapchain(self.surface, window_extent, Some(self.swapchain.handle));
 
         if old_format != self.swapchain.format {
             VULKAN.destroy_pipeline(self.pipeline);
@@ -185,30 +164,19 @@ impl RenderContext {
         }
 
         self.images.clear();
-
-        Self::init_images(
-            &self.swapchain.images,
-            self.swapchain.format,
-            self.swapchain.image_size,
-            self.render_pass,
-            &mut self.images,
-        )
+        self.init_images()
     }
 
-    fn init_images(
-        images: &[vk::Image],
-        format: vk::Format,
-        size: vk::Extent2D,
-        render_pass: vk::RenderPass,
-        result: &mut Vec<SwapchainImage>,
-    ) {
-        result.reserve(images.len());
-        for image in images {
-            result.push({
+    fn init_images(&mut self) {
+        let images = VULKAN.get_swapchain_images::<MAX_SWAPCHAIN_DEPTH>(self.swapchain.handle);
+
+        self.images.reserve(images.len());
+        for handle in &images {
+            self.images.push({
                 let view = {
                     let create_info = vk::ImageViewCreateInfo::builder()
-                        .image(*image)
-                        .format(format)
+                        .image(*handle)
+                        .format(self.swapchain.format)
                         .view_type(vk::ImageViewType::TYPE_2D)
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -224,10 +192,10 @@ impl RenderContext {
                 let frame_buffer = {
                     let attachment = [view];
                     let create_info = vk::FramebufferCreateInfo::builder()
-                        .render_pass(render_pass)
+                        .render_pass(self.render_pass)
                         .attachments(&attachment)
-                        .width(size.width)
-                        .height(size.height)
+                        .width(self.swapchain.image_size.width)
+                        .height(self.swapchain.image_size.height)
                         .layers(1);
 
                     VULKAN.create_frame_buffer(&create_info)
@@ -303,7 +271,7 @@ impl RenderContext {
     }
 }
 
-impl Drop for RenderContext {
+impl Drop for RendererWindow {
     fn drop(&mut self) {
         let fences = [self.frames[0].fence, self.frames[1].fence];
         let _ = VULKAN.wait_for_fences(&fences, u64::MAX);

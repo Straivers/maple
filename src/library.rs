@@ -11,7 +11,6 @@ use win32::{
 #[derive(Debug)]
 pub struct Library {
     library: HINSTANCE,
-    path: String,
 }
 
 impl Library {
@@ -27,13 +26,8 @@ impl Library {
             unsafe { SetErrorMode(SEM_FAILCRITICALERRORS) };
             Some(Self {
                 library,
-                path: path.to_string(),
             })
         }
-    }
-
-    pub fn path(&self) -> &str {
-        &self.path
     }
 
     pub fn get_symbol(&self, path: &CStr) -> Option<*mut c_void> {

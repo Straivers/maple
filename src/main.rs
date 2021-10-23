@@ -1,11 +1,11 @@
 //! Maple Engine entry point
 
-use crate::{dpi::PhysicalSize, window_event::WindowEvent};
+use crate::{dpi::PhysicalSize};
 use render_base::Response;
-use render_context::RenderContext;
+use render_context::RendererWindow;
 
 use clap::App;
-use window::EventLoopControl;
+use window::{EventLoopControl, WindowEvent};
 
 use std::{
     sync::mpsc::{channel, sync_channel, Sender, SyncSender},
@@ -24,11 +24,8 @@ mod recorder;
 mod render_base;
 mod render_context;
 mod renderer;
-mod swapchain;
 mod vulkan;
 mod window;
-mod window_event;
-mod window_handle;
 
 const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -91,7 +88,7 @@ pub fn spawn_window(
     let (to_window, from_renderer) = sync_channel::<render_base::Response>(1);
     let title = title.to_owned();
     spawn(move || {
-        let mut context = RenderContext::new();
+        let mut context = RendererWindow::new();
         let mut window_size = PhysicalSize { width: 0, height: 0 };
 
         window::window(title, |control, event| {
@@ -126,7 +123,6 @@ pub fn spawn_window(
                         let _ = from_renderer.recv();
                     }
                 }
-                _ => {}
             }
             EventLoopControl::Continue
         });

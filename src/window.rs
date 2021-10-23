@@ -3,8 +3,6 @@ use std::{convert::TryInto, sync::Once};
 use crate::{
     array_vec::ArrayVec,
     dpi::PhysicalSize,
-    window_event::{ButtonState, MouseButton, WindowEvent},
-    window_handle::WindowHandle,
 };
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
@@ -13,8 +11,8 @@ use win32::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
         LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, QS_ALLEVENTS,
-        SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN,
-        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND,
+        WM_QUIT,
         WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
@@ -29,14 +27,34 @@ pub const MAX_TITLE_LENGTH: usize = 256;
 
 static REGISTER_CLASS: Once = Once::new();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(target_os = "windows")]
+pub struct WindowHandle {
+    pub hwnd: HWND,
+    pub hinstance: HINSTANCE,
+}
+
 pub struct WindowControl {
     handle: WindowHandle,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum WindowEvent {
+    Created {
+        size: PhysicalSize,
+    },
+    Destroyed {},
+    CloseRequested {},
+    Resized {
+        size: PhysicalSize,
+    },
+    Update {},
 }
 
 impl WindowControl {
     pub fn destroy(&self) {
         unsafe {
-            DestroyWindow(HWND(self.handle.hwnd as _));
+            DestroyWindow(self.handle.hwnd);
         }
     }
 
@@ -99,8 +117,8 @@ where
         callback,
         control: WindowControl {
             handle: WindowHandle {
-                hwnd: hwnd.0 as _,
-                hinstance: hinstance.0 as _,
+                hwnd,
+                hinstance,
             },
         },
     };
@@ -224,50 +242,50 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                 */
                 return LRESULT(1);
             }
-            WM_LBUTTONDOWN => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Left,
-                    state: ButtonState::Pressed,
-                });
-            }
-            WM_LBUTTONUP => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Left,
-                    state: ButtonState::Released,
-                });
-            }
-            WM_MBUTTONDOWN => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Middle,
-                    state: ButtonState::Pressed,
-                });
-            }
-            WM_MBUTTONUP => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Middle,
-                    state: ButtonState::Released,
-                });
-            }
-            WM_RBUTTONDOWN => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Right,
-                    state: ButtonState::Pressed,
-                });
-            }
-            WM_RBUTTONUP => {
-                window.dispatch(WindowEvent::MouseButton {
-                    button: MouseButton::Right,
-                    state: ButtonState::Released,
-                });
-            }
-            WM_MOUSEMOVE => {
-                let x = lparam.0 as i16;
-                let y = (lparam.0 >> 16) as i16;
-                window.dispatch(WindowEvent::MouseMove { x, y });
-            }
-            WM_MOUSEWHEEL => window.dispatch(WindowEvent::MouseWheel {
-                delta: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-            }),
+            // WM_LBUTTONDOWN => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Left,
+            //         state: ButtonState::Pressed,
+            //     });
+            // }
+            // WM_LBUTTONUP => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Left,
+            //         state: ButtonState::Released,
+            //     });
+            // }
+            // WM_MBUTTONDOWN => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Middle,
+            //         state: ButtonState::Pressed,
+            //     });
+            // }
+            // WM_MBUTTONUP => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Middle,
+            //         state: ButtonState::Released,
+            //     });
+            // }
+            // WM_RBUTTONDOWN => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Right,
+            //         state: ButtonState::Pressed,
+            //     });
+            // }
+            // WM_RBUTTONUP => {
+            //     window.dispatch(InputEvent::MouseButton {
+            //         button: MouseButton::Right,
+            //         state: ButtonState::Released,
+            //     });
+            // }
+            // WM_MOUSEMOVE => {
+            //     let x = lparam.0 as i16;
+            //     let y = (lparam.0 >> 16) as i16;
+            //     window.dispatch(InputEvent::MouseMove { x, y });
+            // }
+            // WM_MOUSEWHEEL => window.dispatch(InputEvent::MouseWheel {
+            //     delta: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+            // }),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 
