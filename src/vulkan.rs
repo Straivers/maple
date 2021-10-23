@@ -633,32 +633,6 @@ impl Vulkan {
                 .expect("Out of memory");
         }
     }
-
-    pub fn map(
-        &self,
-        memory: vk::DeviceMemory,
-        offset: vk::DeviceSize,
-        size: vk::DeviceSize,
-        flags: vk::MemoryMapFlags,
-    ) -> *mut c_void {
-        unsafe {
-            self.device
-                .map_memory(memory, offset, size, flags)
-                .expect("Memory map failed")
-        }
-    }
-
-    pub fn flush_mapped(&self, ranges: &[vk::MappedMemoryRange]) {
-        unsafe {
-            self.device.flush_mapped_memory_ranges(ranges).expect("Out of memory");
-        }
-    }
-
-    pub fn unmap(&self, memory: vk::DeviceMemory) {
-        unsafe {
-            self.device.unmap_memory(memory);
-        }
-    }
 }
 
 impl Drop for Vulkan {

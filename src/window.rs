@@ -1,9 +1,6 @@
 use std::{convert::TryInto, sync::Once};
 
-use crate::{
-    array_vec::ArrayVec,
-    dpi::PhysicalSize,
-};
+use crate::{array_vec::ArrayVec, dpi::PhysicalSize};
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{LibraryLoader::GetModuleHandleW, Threading::MsgWaitForMultipleObjects, WindowsProgramming::INFINITE},
@@ -11,9 +8,8 @@ use win32::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
         LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, QS_ALLEVENTS,
-        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND,
-        WM_QUIT,
-        WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_QUIT, WM_SIZE, WNDCLASSW,
+        WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -40,14 +36,10 @@ pub struct WindowControl {
 
 #[derive(Debug, Clone, Copy)]
 pub enum WindowEvent {
-    Created {
-        size: PhysicalSize,
-    },
+    Created { size: PhysicalSize },
     Destroyed {},
     CloseRequested {},
-    Resized {
-        size: PhysicalSize,
-    },
+    Resized { size: PhysicalSize },
     Update {},
 }
 
@@ -116,10 +108,7 @@ where
     let mut window = Window {
         callback,
         control: WindowControl {
-            handle: WindowHandle {
-                hwnd,
-                hinstance,
-            },
+            handle: WindowHandle { hwnd, hinstance },
         },
     };
 

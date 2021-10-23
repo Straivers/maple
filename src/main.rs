@@ -1,6 +1,6 @@
 //! Maple Engine entry point
 
-use crate::{dpi::PhysicalSize};
+use crate::dpi::PhysicalSize;
 use render_base::Response;
 use render_context::RendererWindow;
 

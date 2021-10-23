@@ -24,9 +24,7 @@ impl Library {
             None
         } else {
             unsafe { SetErrorMode(SEM_FAILCRITICALERRORS) };
-            Some(Self {
-                library,
-            })
+            Some(Self { library })
         }
     }
 

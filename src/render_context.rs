@@ -1,8 +1,14 @@
 use ash::vk;
 
-use crate::{constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT, MAX_SWAPCHAIN_DEPTH}, dpi::PhysicalSize, render_base::{
+use crate::{
+    constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT, MAX_SWAPCHAIN_DEPTH},
+    dpi::PhysicalSize,
+    render_base::{
         create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Vertex, PIPELINE_LAYOUT, VULKAN,
-    }, vulkan::SwapchainData, window::WindowHandle};
+    },
+    vulkan::SwapchainData,
+    window::WindowHandle,
+};
 
 pub struct SwapchainImage {
     view: vk::ImageView,
@@ -246,27 +252,34 @@ impl RendererWindow {
             VULKAN.bind(frame.buffer, frame.memory, 0);
         }
 
-        let data = VULKAN.map(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
-
         unsafe {
+            let data = VULKAN
+                .device
+                .map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .expect("Out of memory");
+
             let buffer = std::slice::from_raw_parts_mut(data as *mut _, vertices.len());
             buffer.copy_from_slice(vertices);
 
             let buffer = std::slice::from_raw_parts_mut(data.add(vertex_buffer_size as usize) as *mut _, indices.len());
             buffer.copy_from_slice(indices);
+
+            // PERFORMANCE(David Z): This call is unecessary if the memory is
+            // host-coherent
+            VULKAN
+                .device
+                .flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                    s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
+                    p_next: std::ptr::null(),
+                    memory: frame.memory,
+                    offset: 0,
+                    size: vk::WHOLE_SIZE,
+                }])
+                .expect("Out of memory");
+
+            VULKAN.device.unmap_memory(frame.memory);
         }
 
-        // PERFORMANCE(David Z): This call is unecessary if the memory is
-        // host-coherent
-        VULKAN.flush_mapped(&[vk::MappedMemoryRange {
-            s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
-            p_next: std::ptr::null(),
-            memory: frame.memory,
-            offset: 0,
-            size: vk::WHOLE_SIZE,
-        }]);
-
-        VULKAN.unmap(frame.memory);
         vertex_buffer_size as vk::DeviceSize
     }
 }
@@ -280,6 +293,8 @@ impl Drop for RendererWindow {
             VULKAN.free_fence(frame.fence);
             VULKAN.free_semaphore(frame.acquire);
             VULKAN.free_semaphore(frame.present);
+            VULKAN.destroy_buffer(frame.buffer);
+            VULKAN.free(frame.memory);
         }
 
         self.images.clear();
