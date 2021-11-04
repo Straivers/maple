@@ -36,9 +36,13 @@ impl VulkanDebug {
         entry: &EntryCustom<Library>,
         instance: &Instance,
         create_info: &vk::DebugUtilsMessengerCreateInfoEXT,
+        allocation_callbacks: Option<&vk::AllocationCallbacks>,
     ) -> Self {
         let api = DebugUtils::new(entry, instance);
-        let callback = unsafe { api.create_debug_utils_messenger(create_info, None).unwrap() };
+        let callback = unsafe {
+            api.create_debug_utils_messenger(create_info, allocation_callbacks)
+                .unwrap()
+        };
         Self { api, callback }
     }
 }
@@ -47,23 +51,26 @@ pub struct Vulkan {
     #[allow(dead_code)]
     library: EntryCustom<Library>,
     instance: Instance,
-    pub(crate) gpu: Gpu,
-    pub gpu_properties: vk::PhysicalDeviceProperties,
-    pub gpu_memory_info: vk::PhysicalDeviceMemoryProperties,
+    gpu: Gpu,
+    gpu_properties: vk::PhysicalDeviceProperties,
+    gpu_memory_info: vk::PhysicalDeviceMemoryProperties,
 
-    pub device: Device,
+    device: Device,
 
-    pub graphics_queue: vk::Queue,
-    pub present_queue: vk::Queue,
+    graphics_queue: vk::Queue,
+    present_queue: vk::Queue,
 
-    pub surface_api: Surface,
-    pub os_surface_api: Win32Surface,
-    pub swapchain_api: Swapchain,
+    surface_api: Surface,
+    os_surface_api: Win32Surface,
+    swapchain_api: Swapchain,
 
     pipeline_cache: vk::PipelineCache,
 
     debug: Option<VulkanDebug>,
+    allocation_callbacks: Option<vk::AllocationCallbacks>,
 }
+
+unsafe impl Sync for Vulkan {}
 
 #[must_use]
 #[derive(Debug, Default)]
@@ -99,6 +106,8 @@ impl Vulkan {
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(debug_callback));
 
+        let allocation_callbacks: Option<vk::AllocationCallbacks> = None;
+
         let instance = {
             let app_info = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
             let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
@@ -120,11 +129,16 @@ impl Vulkan {
                 .enabled_layer_names(layers.as_slice())
                 .enabled_extension_names(extensions.as_slice());
 
-            unsafe { library.create_instance(&create_info, None) }.expect("Unexpected error")
+            unsafe { library.create_instance(&create_info, allocation_callbacks.as_ref()) }.expect("Unexpected error")
         };
 
         let debug = if use_validation {
-            Some(VulkanDebug::new(&library, &instance, &debug_callback_create_info))
+            Some(VulkanDebug::new(
+                &library,
+                &instance,
+                &debug_callback_create_info,
+                allocation_callbacks.as_ref(),
+            ))
         } else {
             None
         };
@@ -163,7 +177,8 @@ impl Vulkan {
                 .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
-            unsafe { instance.create_device(gpu.handle, &create_info, None) }.expect("Unexpected error")
+            unsafe { instance.create_device(gpu.handle, &create_info, allocation_callbacks.as_ref()) }
+                .expect("Unexpected error")
         };
 
         let swapchain_api = Swapchain::new(&instance, &device);
@@ -174,7 +189,7 @@ impl Vulkan {
         let pipeline_cache = {
             let create_info = vk::PipelineCacheCreateInfo::builder();
             // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-            unsafe { device.create_pipeline_cache(&create_info, None) }.expect("Out of memory")
+            unsafe { device.create_pipeline_cache(&create_info, allocation_callbacks.as_ref()) }.expect("Out of memory")
         };
 
         Self {
@@ -191,19 +206,29 @@ impl Vulkan {
             swapchain_api,
             pipeline_cache,
             debug,
+            allocation_callbacks,
         }
+    }
+
+    pub fn non_coherent_atom_size(&self) -> vk::DeviceSize {
+        self.gpu_properties.limits.non_coherent_atom_size
     }
 
     pub fn create_surface(&self, window_handle: &WindowHandle) -> vk::SurfaceKHR {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
             .hwnd(window_handle.hwnd.0 as _)
             .hinstance(window_handle.hinstance.0 as _);
-        unsafe { self.os_surface_api.create_win32_surface(&ci, None) }.expect("Out of memory")
+        unsafe {
+            self.os_surface_api
+                .create_win32_surface(&ci, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn destroy_surface(&self, surface: vk::SurfaceKHR) {
         unsafe {
-            self.surface_api.destroy_surface(surface, None);
+            self.surface_api
+                .destroy_surface(surface, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -300,11 +325,16 @@ impl Vulkan {
         let old_swapchain = old.unwrap_or(vk::SwapchainKHR::null());
         create_info.old_swapchain = old_swapchain;
 
-        let handle = unsafe { self.swapchain_api.create_swapchain(&create_info, None) }.unwrap();
+        let handle = unsafe {
+            self.swapchain_api
+                .create_swapchain(&create_info, self.allocation_callbacks.as_ref())
+        }
+        .unwrap();
 
         if create_info.old_swapchain != vk::SwapchainKHR::null() {
             unsafe {
-                self.swapchain_api.destroy_swapchain(create_info.old_swapchain, None);
+                self.swapchain_api
+                    .destroy_swapchain(create_info.old_swapchain, self.allocation_callbacks.as_ref());
             }
         }
 
@@ -319,7 +349,8 @@ impl Vulkan {
 
     pub fn destroy_swapchain(&self, swapchain: SwapchainData) {
         unsafe {
-            self.swapchain_api.destroy_swapchain(swapchain.handle, None);
+            self.swapchain_api
+                .destroy_swapchain(swapchain.handle, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -351,6 +382,14 @@ impl Vulkan {
         }
     }
 
+    pub fn present(&self, present_info: &vk::PresentInfoKHR) {
+        unsafe {
+            self.swapchain_api
+                .queue_present(self.present_queue, &present_info)
+                .expect("Out of memory");
+        }
+    }
+
     /// Fetches a fence from the context's pool, or creates a new one. If the
     /// fence needs to be signalled, a new one will be created.
     ///
@@ -367,7 +406,11 @@ impl Vulkan {
             ..Default::default()
         };
 
-        unsafe { self.device.create_fence(&ci, None).expect("Out of memory") }
+        unsafe {
+            self.device
+                .create_fence(&ci, self.allocation_callbacks.as_ref())
+                .expect("Out of memory")
+        }
     }
 
     /// Returns a fence to the context's pool, or destroys it if the fence pool
@@ -376,7 +419,7 @@ impl Vulkan {
         unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
 
         unsafe {
-            self.device.destroy_fence(fence, None);
+            self.device.destroy_fence(fence, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -413,14 +456,15 @@ impl Vulkan {
     #[must_use]
     pub fn create_semaphore(&self) -> vk::Semaphore {
         let ci = vk::SemaphoreCreateInfo::builder();
-        unsafe { self.device.create_semaphore(&ci, None) }.expect("Out of memory")
+        unsafe { self.device.create_semaphore(&ci, self.allocation_callbacks.as_ref()) }.expect("Out of memory")
     }
 
     /// Returns a semaphore to the context's pool, or destroys it if the
     /// semaphore pool is at capacity.
     pub fn free_semaphore(&self, semaphore: vk::Semaphore) {
         unsafe {
-            self.device.destroy_semaphore(semaphore, None);
+            self.device
+                .destroy_semaphore(semaphore, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -436,7 +480,11 @@ impl Vulkan {
 
             // Only fails on out of memory, or unused extension errors (Vulkan
             // 1.2; Aug 7, 2021)
-            unsafe { self.device.create_shader_module(&ci, None) }.expect("Out of memory")
+            unsafe {
+                self.device
+                    .create_shader_module(&ci, self.allocation_callbacks.as_ref())
+            }
+            .expect("Out of memory")
         } else {
             panic!("Shader source must be aligned to 4-byte words")
         }
@@ -447,7 +495,11 @@ impl Vulkan {
     #[must_use]
     pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe { self.device.create_pipeline_layout(create_info, None) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_pipeline_layout(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     /// # Panics
@@ -477,7 +529,8 @@ impl Vulkan {
 
     pub fn destroy_pipeline(&self, pipeline: vk::Pipeline) {
         unsafe {
-            self.device.destroy_pipeline(pipeline, None);
+            self.device
+                .destroy_pipeline(pipeline, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -498,12 +551,17 @@ impl Vulkan {
         }
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe { self.device.create_command_pool(&create_info, None) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_command_pool(&create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn destroy_command_pool(&self, pool: vk::CommandPool) {
         unsafe {
-            self.device.destroy_command_pool(pool, None);
+            self.device
+                .destroy_command_pool(pool, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -557,44 +615,62 @@ impl Vulkan {
 
     #[must_use]
     pub fn create_image_view(&self, create_info: &vk::ImageViewCreateInfo) -> vk::ImageView {
-        unsafe { self.device.create_image_view(create_info, None) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_image_view(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn destroy_image_view(&self, view: vk::ImageView) {
         unsafe {
-            self.device.destroy_image_view(view, None);
+            self.device.destroy_image_view(view, self.allocation_callbacks.as_ref());
         }
     }
 
     #[must_use]
     pub fn create_frame_buffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
-        unsafe { self.device.create_framebuffer(create_info, None) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_framebuffer(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn destroy_frame_buffer(&self, frame_buffer: vk::Framebuffer) {
         unsafe {
-            self.device.destroy_framebuffer(frame_buffer, None);
+            self.device
+                .destroy_framebuffer(frame_buffer, self.allocation_callbacks.as_ref());
         }
     }
 
     #[must_use]
     pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
-        unsafe { self.device.create_render_pass(create_info, None) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_render_pass(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
         unsafe {
-            self.device.destroy_render_pass(renderpass, None);
+            self.device
+                .destroy_render_pass(renderpass, self.allocation_callbacks.as_ref());
         }
     }
 
     pub fn create_buffer(&self, create_info: &vk::BufferCreateInfo) -> vk::Buffer {
-        unsafe { self.device.create_buffer(create_info, None).expect("Out of memory") }
+        unsafe {
+            self.device
+                .create_buffer(create_info, self.allocation_callbacks.as_ref())
+                .expect("Out of memory")
+        }
     }
 
     pub fn destroy_buffer(&self, buffer: vk::Buffer) {
         unsafe {
-            self.device.destroy_buffer(buffer, None);
+            self.device.destroy_buffer(buffer, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -616,13 +692,43 @@ impl Vulkan {
         None
     }
 
+    pub fn flush_mapped_memory_ranges(&self, ranges: &[vk::MappedMemoryRange]) {
+        unsafe {
+            self.device.flush_mapped_memory_ranges(ranges).expect("Out of memory");
+        }
+    }
+
+    pub fn map_memory(
+        &self,
+        memory: vk::DeviceMemory,
+        from: vk::DeviceSize,
+        size: vk::DeviceSize,
+        flags: vk::MemoryMapFlags,
+    ) -> *mut c_void {
+        unsafe {
+            self.device
+                .map_memory(memory, from, size, flags)
+                .expect("Out of memory")
+        }
+    }
+
+    pub fn unmap_memory(&self, memory: vk::DeviceMemory) {
+        unsafe {
+            self.device.unmap_memory(memory);
+        }
+    }
+
     pub fn allocate(&self, alloc_info: &vk::MemoryAllocateInfo) -> vk::DeviceMemory {
-        unsafe { self.device.allocate_memory(alloc_info, None).expect("Out of memory") }
+        unsafe {
+            self.device
+                .allocate_memory(alloc_info, self.allocation_callbacks.as_ref())
+                .expect("Out of memory")
+        }
     }
 
     pub fn free(&self, memory: vk::DeviceMemory) {
         unsafe {
-            self.device.free_memory(memory, None);
+            self.device.free_memory(memory, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -642,13 +748,16 @@ impl Drop for Vulkan {
             let _ = self.device.device_wait_idle();
 
             if let Some(debug) = self.debug.as_ref() {
-                debug.api.destroy_debug_utils_messenger(debug.callback, None);
+                debug
+                    .api
+                    .destroy_debug_utils_messenger(debug.callback, self.allocation_callbacks.as_ref());
             }
 
-            self.device.destroy_pipeline_cache(self.pipeline_cache, None);
+            self.device
+                .destroy_pipeline_cache(self.pipeline_cache, self.allocation_callbacks.as_ref());
 
-            self.device.destroy_device(None);
-            self.instance.destroy_instance(None);
+            self.device.destroy_device(self.allocation_callbacks.as_ref());
+            self.instance.destroy_instance(self.allocation_callbacks.as_ref());
         }
     }
 }

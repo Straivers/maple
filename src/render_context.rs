@@ -213,7 +213,7 @@ impl RendererWindow {
     }
 
     fn copy_data_to_gpu(frame: &mut Frame, vertices: &[Vertex], indices: &[u16]) -> vk::DeviceSize {
-        let alignment = VULKAN.gpu_properties.limits.non_coherent_atom_size as usize;
+        let alignment = VULKAN.non_coherent_atom_size() as usize;
         let vertex_buffer_size = ((std::mem::size_of_val(vertices) + alignment - 1) / alignment) * alignment;
         let min_capacity = (vertex_buffer_size + std::mem::size_of_val(indices)).max(DEFAULT_VERTEX_BUFFER_SIZE) as u64;
 
@@ -253,10 +253,7 @@ impl RendererWindow {
         }
 
         unsafe {
-            let data = VULKAN
-                .device
-                .map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
-                .expect("Out of memory");
+            let data = VULKAN.map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
 
             let buffer = std::slice::from_raw_parts_mut(data as *mut _, vertices.len());
             buffer.copy_from_slice(vertices);
@@ -266,18 +263,15 @@ impl RendererWindow {
 
             // PERFORMANCE(David Z): This call is unecessary if the memory is
             // host-coherent
-            VULKAN
-                .device
-                .flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                    s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
-                    p_next: std::ptr::null(),
-                    memory: frame.memory,
-                    offset: 0,
-                    size: vk::WHOLE_SIZE,
-                }])
-                .expect("Out of memory");
+            VULKAN.flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
+                p_next: std::ptr::null(),
+                memory: frame.memory,
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            }]);
 
-            VULKAN.device.unmap_memory(frame.memory);
+            VULKAN.unmap_memory(frame.memory);
         }
 
         vertex_buffer_size as vk::DeviceSize

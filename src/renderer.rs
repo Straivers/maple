@@ -34,7 +34,7 @@ impl Renderer {
                     .swapchains(&[swapchain])
                     .image_indices(&[image_id])
                     .build();
-                unsafe { VULKAN.swapchain_api.queue_present(VULKAN.graphics_queue, &ci) }.expect("Out of memory");
+                VULKAN.present(&ci);
                 Response::CommandsSubmitted { image_id }
             }
         }
