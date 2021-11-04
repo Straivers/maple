@@ -1,16 +1,10 @@
 //! Maple Engine entry point
 
 use crate::dpi::PhysicalSize;
-use render_base::Response;
 use render_context::RendererWindow;
 
 use clap::App;
 use window::{EventLoopControl, WindowEvent};
-
-use std::{
-    sync::mpsc::{channel, sync_channel, Sender, SyncSender},
-    thread::{spawn, JoinHandle},
-};
 
 use crate::render_base::to_extent;
 
@@ -53,78 +47,45 @@ pub enum WindowStatus {
 }
 
 fn run(_cli_options: &CliOptions) {
-    let (send, _receive) = channel::<WindowStatus>();
-
-    let (render_thread, to_renderer) = spawn_renderer();
-
-    spawn_window("Title 1", send.clone(), to_renderer.clone());
-    spawn_window("Title 2", send, to_renderer.clone());
-
-    std::mem::drop(to_renderer);
-
-    render_thread.join().unwrap();
+    spawn_window("Title 1");
 }
 
-pub fn spawn_renderer() -> (JoinHandle<()>, Sender<(render_base::Request, SyncSender<Response>)>) {
-    let (to_renderer, from_windows) = channel::<(render_base::Request, SyncSender<Response>)>();
+pub fn spawn_window(title: &str) {
+    let mut context = RendererWindow::new();
+    let mut renderer = renderer::Renderer::new();
+    let mut window_size = PhysicalSize { width: 0, height: 0 };
 
-    let joiner = spawn(move || {
-        let mut renderer = renderer::Renderer::new();
-        while let Ok((message, response)) = from_windows.recv() {
-            response.send(renderer.execute(&message)).unwrap();
-        }
-    });
+    window::window(title.to_owned(), |control, event| {
+        match event {
+            WindowEvent::Created { size } => {
+                window_size = size;
+                context.bind(control.handle(), size);
+            }
+            WindowEvent::Destroyed {} => {
+                return EventLoopControl::Stop;
+            }
+            WindowEvent::CloseRequested {} => {
+                control.destroy();
+            }
+            WindowEvent::Resized { size } => {
+                window_size = size;
 
-    (joiner, to_renderer)
-}
+                let vertices = [];
+                let indices = [];
 
-pub fn spawn_window(
-    title: &str,
-    _ack_send: Sender<WindowStatus>,
-    to_renderer: Sender<(render_base::Request, SyncSender<Response>)>,
-) -> JoinHandle<()> {
-    // We need at least 1 slot to buffer messages from the renderer so that the
-    // renderer won't block waiting for the window thread to wake.
-    let (to_window, from_renderer) = sync_channel::<render_base::Response>(1);
-    let title = title.to_owned();
-    spawn(move || {
-        let mut context = RendererWindow::new();
-        let mut window_size = PhysicalSize { width: 0, height: 0 };
-
-        window::window(title, |control, event| {
-            match event {
-                WindowEvent::Created { size } => {
-                    window_size = size;
-                    context.bind(control.handle(), size);
-                }
-                WindowEvent::Destroyed {} => {
-                    return EventLoopControl::Stop;
-                }
-                WindowEvent::CloseRequested {} => {
-                    control.destroy();
-                }
-                WindowEvent::Resized { size } => {
-                    window_size = size;
-
-                    let vertices = [];
-                    let indices = [];
-
-                    if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
-                        to_renderer.send((request, to_window.clone())).unwrap();
-                        let _ = from_renderer.recv();
-                    }
-                }
-                WindowEvent::Update {} => {
-                    let vertices = [];
-                    let indices = [];
-
-                    if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
-                        to_renderer.send((request, to_window.clone())).unwrap();
-                        let _ = from_renderer.recv();
-                    }
+                if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
+                    let _ = renderer.execute(&request);
                 }
             }
-            EventLoopControl::Continue
-        });
-    })
+            WindowEvent::Update {} => {
+                let vertices = [];
+                let indices = [];
+
+                if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
+                    let _ = renderer.execute(&request);
+                }
+            }
+        }
+        EventLoopControl::Continue
+    });
 }
