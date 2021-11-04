@@ -1,12 +1,12 @@
 use ash::vk;
 
+use super::{
+    shared::*,
+    vulkan::SwapchainData,
+};
 use crate::{
     constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT, MAX_SWAPCHAIN_DEPTH},
     dpi::PhysicalSize,
-    render_base::{
-        create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Vertex, PIPELINE_LAYOUT, VULKAN,
-    },
-    vulkan::SwapchainData,
     window::WindowHandle,
 };
 
@@ -95,11 +95,12 @@ impl RendererWindow {
         self.init_images();
     }
 
-    pub fn draw(&mut self, window_extent: vk::Extent2D, vertices: &[Vertex], indices: &[u16]) -> Option<Request> {
+    pub fn draw(&mut self, window_size: PhysicalSize, vertices: &[Vertex], indices: &[u16]) -> Option<Request> {
         let frame_id = self.frame_id as usize;
         let frame = &mut self.frames[frame_id];
         let _ = VULKAN.wait_for_fences(&[frame.fence], u64::MAX);
 
+        let window_extent = to_extent(window_size);
         if window_extent != self.swapchain.image_size {
             self.resize(window_extent);
             return None;

@@ -1,12 +1,10 @@
 //! Maple Engine entry point
 
 use crate::dpi::PhysicalSize;
-use render_context::RendererWindow;
+use renderer::RendererWindow;
 
 use clap::App;
 use window::{EventLoopControl, WindowEvent};
-
-use crate::render_base::to_extent;
 
 mod array_vec;
 mod color;
@@ -14,11 +12,7 @@ mod constants;
 mod dpi;
 mod geometry;
 mod library;
-mod recorder;
-mod render_base;
-mod render_context;
 mod renderer;
-mod vulkan;
 mod window;
 
 const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -52,7 +46,7 @@ fn run(_cli_options: &CliOptions) {
 
 pub fn spawn_window(title: &str) {
     let mut context = RendererWindow::new();
-    let mut renderer = renderer::Renderer::new();
+    let mut renderer = renderer::Executor::new();
     let mut window_size = PhysicalSize { width: 0, height: 0 };
 
     window::window(title.to_owned(), |control, event| {
@@ -73,16 +67,20 @@ pub fn spawn_window(title: &str) {
                 let vertices = [];
                 let indices = [];
 
-                if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
-                    let _ = renderer.execute(&request);
+                if window_size != PhysicalSize::default() {
+                    if let Some(request) = context.draw(window_size, &vertices, &indices) {
+                        let _ = renderer.execute(&request);
+                    }
                 }
             }
             WindowEvent::Update {} => {
                 let vertices = [];
                 let indices = [];
 
-                if let Some(request) = context.draw(to_extent(window_size), &vertices, &indices) {
-                    let _ = renderer.execute(&request);
+                if window_size != PhysicalSize::default() {
+                    if let Some(request) = context.draw(window_size, &vertices, &indices) {
+                        let _ = renderer.execute(&request);
+                    }
                 }
             }
         }

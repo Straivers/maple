@@ -14,7 +14,8 @@ use ash::{
     vk, Device, EntryCustom, Instance,
 };
 
-use crate::{array_vec::ArrayVec, library::Library, recorder::CommandRecorder, window::WindowHandle};
+use super::recorder::CommandRecorder;
+use crate::{array_vec::ArrayVec, library::Library, window::WindowHandle};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;

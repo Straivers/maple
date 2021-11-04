@@ -6,11 +6,11 @@
 
 use ash::vk::{self, PresentInfoKHR};
 
-use crate::render_base::{Request, Response, VULKAN};
+use super::shared::*;
 
-pub struct Renderer {}
+pub struct Executor {}
 
-impl Renderer {
+impl Executor {
     pub fn new() -> Self {
         lazy_static::initialize(&VULKAN);
 
