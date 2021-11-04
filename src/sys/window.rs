@@ -257,8 +257,8 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
             WM_MBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Middle].set(ButtonState::Released),
             WM_RBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Pressed),
             WM_RBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Released),
-            WM_MOUSEWHEEL => window.input_mut().cursor_wheel_y = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-            WM_MOUSEHWHEEL => {window.input_mut().cursor_wheel_x = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32); println!("hi") },
+            WM_MOUSEWHEEL => window.input_mut().cursor_wheel_y += (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+            WM_MOUSEHWHEEL => window.input_mut().cursor_wheel_x += (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 
