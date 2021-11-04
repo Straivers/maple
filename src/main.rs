@@ -68,7 +68,7 @@ pub fn spawn_window(title: &str) {
                     }
                 }
             }
-            WindowEvent::Update {} => {
+            WindowEvent::Update { input } => {
                 let vertices = [];
                 let indices = [];
 

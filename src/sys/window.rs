@@ -7,12 +7,16 @@ use win32::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
         LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
         CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, QS_ALLEVENTS,
-        SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_QUIT, WM_SIZE, WNDCLASSW,
-        WS_OVERLAPPEDWINDOW,
+        SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN,
+        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 
-use super::dpi::PhysicalSize;
+use super::{
+    dpi::PhysicalSize,
+    input::{ButtonState, FrameInput, MouseButton},
+};
 use crate::array_vec::ArrayVec;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
@@ -37,12 +41,12 @@ pub struct WindowControl {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum WindowEvent {
+pub enum WindowEvent<'a> {
     Created { size: PhysicalSize },
     Destroyed {},
     CloseRequested {},
     Resized { size: PhysicalSize },
-    Update {},
+    Update { input: &'a FrameInput },
 }
 
 impl WindowControl {
@@ -112,6 +116,7 @@ where
         control: WindowControl {
             handle: WindowHandle { hwnd, hinstance },
         },
+        input: FrameInput::new(),
     };
 
     {
@@ -144,6 +149,7 @@ where
     unsafe {
         loop {
             MsgWaitForMultipleObjects(0, std::ptr::null(), false, INFINITE, QS_ALLEVENTS);
+            window.input.advance();
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
                 if msg.message == WM_QUIT {
                     DestroyWindow(hwnd);
@@ -153,7 +159,7 @@ where
                 DispatchMessageW(&msg);
             }
 
-            window.dispatch(WindowEvent::Update {});
+            (window.callback)(&window.control, WindowEvent::Update { input: &window.input });
         }
     }
 }
@@ -164,6 +170,7 @@ where
 {
     callback: Callback,
     control: WindowControl,
+    input: FrameInput,
 }
 
 impl<Callback> WindowT for Window<Callback>
@@ -181,12 +188,18 @@ where
             unsafe { PostQuitMessage(0) };
         }
     }
+
+    fn input_mut(&mut self) -> &mut FrameInput {
+        &mut self.input
+    }
 }
 
 trait WindowT {
     fn handle(&self) -> WindowHandle;
 
     fn dispatch(&mut self, event: WindowEvent);
+
+    fn input_mut(&mut self) -> &mut FrameInput;
 }
 
 unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -233,50 +246,19 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                 */
                 return LRESULT(1);
             }
-            // WM_LBUTTONDOWN => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Left,
-            //         state: ButtonState::Pressed,
-            //     });
-            // }
-            // WM_LBUTTONUP => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Left,
-            //         state: ButtonState::Released,
-            //     });
-            // }
-            // WM_MBUTTONDOWN => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Middle,
-            //         state: ButtonState::Pressed,
-            //     });
-            // }
-            // WM_MBUTTONUP => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Middle,
-            //         state: ButtonState::Released,
-            //     });
-            // }
-            // WM_RBUTTONDOWN => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Right,
-            //         state: ButtonState::Pressed,
-            //     });
-            // }
-            // WM_RBUTTONUP => {
-            //     window.dispatch(InputEvent::MouseButton {
-            //         button: MouseButton::Right,
-            //         state: ButtonState::Released,
-            //     });
-            // }
-            // WM_MOUSEMOVE => {
-            //     let x = lparam.0 as i16;
-            //     let y = (lparam.0 >> 16) as i16;
-            //     window.dispatch(InputEvent::MouseMove { x, y });
-            // }
-            // WM_MOUSEWHEEL => window.dispatch(InputEvent::MouseWheel {
-            //     delta: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-            // }),
+            WM_MOUSEMOVE => {
+                let input = window.input_mut();
+                input.cursor_x = lparam.0 as i16;
+                input.cursor_y = (lparam.0 >> 16) as i16;
+            }
+            WM_LBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Left].set(ButtonState::Pressed),
+            WM_LBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Left].set(ButtonState::Released),
+            WM_MBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Middle].set(ButtonState::Pressed),
+            WM_MBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Middle].set(ButtonState::Released),
+            WM_RBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Pressed),
+            WM_RBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Released),
+            WM_MOUSEWHEEL => window.input_mut().cursor_wheel_y = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+            WM_MOUSEHWHEEL => {window.input_mut().cursor_wheel_x = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32); println!("hi") },
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 

@@ -29,7 +29,7 @@ fn build_apis() {
                     // Constants
                     CW_USEDEFAULT, IDC_ARROW, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_QUIT, WM_SIZE, WM_NULL,
                     WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN,
-                    WM_RBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+                    WM_RBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOUSEHWHEEL,
                     WHEEL_DELTA,
                     // Structs
                     CREATESTRUCTW, MSG, WINDOW_EX_STYLE, WNDCLASSW,

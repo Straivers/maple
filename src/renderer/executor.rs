@@ -37,7 +37,7 @@ impl Executor {
                     swapchain_count: 1,
                     p_swapchains: &swapchain,
                     p_image_indices: &image_id,
-                    p_results: std::ptr::null_mut()
+                    p_results: std::ptr::null_mut(),
                 };
 
                 VULKAN.present(&present_info);
