@@ -92,7 +92,6 @@ pub struct SwapchainData {
 impl Vulkan {
     /// Initializes a new vulkan context.
     /// Note: The selected GPU is guaranteed to support surface creation.
-    #[must_use]
     pub fn new(os_library: Library, use_validation: bool) -> Self {
         let library = EntryCustom::new_custom(os_library, |lib, name| {
             lib.get_symbol(name).unwrap_or(std::ptr::null_mut())
@@ -210,9 +209,29 @@ impl Vulkan {
         }
     }
 
+    /*
+      ____
+     / __ \
+    | |  | |_   _  ___ _ __ _   _
+    | |  | | | | |/ _ \ '__| | | |
+    | |__| | |_| |  __/ |  | |_| |
+     \___\_\\__,_|\___|_|   \__, |
+                             __/ |
+                            |___/
+    */
+
     pub fn non_coherent_atom_size(&self) -> vk::DeviceSize {
         self.gpu_properties.limits.non_coherent_atom_size
     }
+
+    /*
+    __      ___     _____             __               _  ___    _ _____
+    \ \    / / |   / ____|           / _|             | |/ / |  | |  __ \
+     \ \  / /| | _| (___  _   _ _ __| |_ __ _  ___ ___| ' /| |__| | |__) |
+      \ \/ / | |/ /\___ \| | | | '__|  _/ _` |/ __/ _ \  < |  __  |  _  /
+       \  /  |   < ____) | |_| | |  | || (_| | (_|  __/ . \| |  | | | \ \
+        \/   |_|\_\_____/ \__,_|_|  |_| \__,_|\___\___|_|\_\_|  |_|_|  \_\
+    */
 
     pub fn create_surface(&self, window_handle: &WindowHandle) -> vk::SurfaceKHR {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
@@ -231,6 +250,17 @@ impl Vulkan {
                 .destroy_surface(surface, self.allocation_callbacks.as_ref());
         }
     }
+
+    /*
+    __      ___     _____                         _           _       _  ___    _ _____
+    \ \    / / |   / ____|                       | |         (_)     | |/ / |  | |  __ \
+     \ \  / /| | _| (_____      ____ _ _ __   ___| |__   __ _ _ _ __ | ' /| |__| | |__) |
+      \ \/ / | |/ /\___ \ \ /\ / / _` | '_ \ / __| '_ \ / _` | | '_ \|  < |  __  |  _  /
+       \  /  |   < ____) \ V  V / (_| | |_) | (__| | | | (_| | | | | | . \| |  | | | \ \
+        \/   |_|\_\_____/ \_/\_/ \__,_| .__/ \___|_| |_|\__,_|_|_| |_|_|\_\_|  |_|_|  \_\
+                                      | |
+                                      |_|
+    */
 
     pub fn create_or_resize_swapchain(
         &self,
@@ -390,230 +420,15 @@ impl Vulkan {
         }
     }
 
-    /// Fetches a fence from the context's pool, or creates a new one. If the
-    /// fence needs to be signalled, a new one will be created.
-    ///
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_fence(&self, signalled: bool) -> vk::Fence {
-        let ci = vk::FenceCreateInfo {
-            flags: if signalled {
-                vk::FenceCreateFlags::SIGNALED
-            } else {
-                vk::FenceCreateFlags::empty()
-            },
-            ..Default::default()
-        };
+    /*
+     _____        _
+    |  __ \      | |
+    | |  | | __ _| |_ __ _
+    | |  | |/ _` | __/ _` |
+    | |__| | (_| | || (_| |
+    |_____/ \__,_|\__\__,_|
+    */
 
-        unsafe {
-            self.device
-                .create_fence(&ci, self.allocation_callbacks.as_ref())
-                .expect("Out of memory")
-        }
-    }
-
-    /// Returns a fence to the context's pool, or destroys it if the fence pool
-    /// is at capacity.
-    pub fn free_fence(&self, fence: vk::Fence) {
-        unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
-
-        unsafe {
-            self.device.destroy_fence(fence, self.allocation_callbacks.as_ref());
-        }
-    }
-
-    /// `true` of success, `false` for time out
-    #[must_use]
-    pub fn wait_for_fences(&self, fences: &[vk::Fence], timeout: u64) -> bool {
-        let r = unsafe {
-            self.device.fp_v1_0().wait_for_fences(
-                self.device.handle(),
-                fences.len() as u32,
-                fences.as_ptr(),
-                vk::TRUE,
-                timeout,
-            )
-        };
-
-        match r {
-            vk::Result::SUCCESS => true,
-            vk::Result::TIMEOUT => false,
-            any => panic!("Unexpected error: {:?}", any),
-        }
-    }
-
-    pub fn reset_fences(&self, fences: &[vk::Fence]) {
-        unsafe {
-            self.device.reset_fences(fences).expect("Out of memory");
-        }
-    }
-
-    /// Fetches a semaphore from the context's pool, or creates a new one.
-    ///
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_semaphore(&self) -> vk::Semaphore {
-        let ci = vk::SemaphoreCreateInfo::builder();
-        unsafe { self.device.create_semaphore(&ci, self.allocation_callbacks.as_ref()) }.expect("Out of memory")
-    }
-
-    /// Returns a semaphore to the context's pool, or destroys it if the
-    /// semaphore pool is at capacity.
-    pub fn free_semaphore(&self, semaphore: vk::Semaphore) {
-        unsafe {
-            self.device
-                .destroy_semaphore(semaphore, self.allocation_callbacks.as_ref());
-        }
-    }
-
-    /// Creates a new shader from SPIR-V source. Note that the source must be
-    /// 4-byte aligned to be accepted as valid.
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_shader(&self, source: &[u8]) -> vk::ShaderModule {
-        if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
-            let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
-            let ci = vk::ShaderModuleCreateInfo::builder().code(words);
-
-            // Only fails on out of memory, or unused extension errors (Vulkan
-            // 1.2; Aug 7, 2021)
-            unsafe {
-                self.device
-                    .create_shader_module(&ci, self.allocation_callbacks.as_ref())
-            }
-            .expect("Out of memory")
-        } else {
-            panic!("Shader source must be aligned to 4-byte words")
-        }
-    }
-
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
-        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe {
-            self.device
-                .create_pipeline_layout(create_info, self.allocation_callbacks.as_ref())
-        }
-        .expect("Out of memory")
-    }
-
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_graphics_pipeline(&self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
-        let mut pipeline = vk::Pipeline::default();
-
-        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe {
-            self.device
-                .fp_v1_0()
-                .create_graphics_pipelines(
-                    self.device.handle(),
-                    self.pipeline_cache,
-                    1,
-                    create_info,
-                    std::ptr::null(),
-                    &mut pipeline,
-                )
-                .result()
-                .expect("Out of memory");
-        }
-
-        pipeline
-    }
-
-    pub fn destroy_pipeline(&self, pipeline: vk::Pipeline) {
-        unsafe {
-            self.device
-                .destroy_pipeline(pipeline, self.allocation_callbacks.as_ref());
-        }
-    }
-
-    /// # Panics
-    /// Panics on out of memory conditions
-    #[must_use]
-    pub fn create_graphics_command_pool(&self, transient: bool, reset_individual: bool) -> vk::CommandPool {
-        let mut create_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(self.gpu.graphics_queue_index)
-            .build();
-
-        if transient {
-            create_info.flags |= vk::CommandPoolCreateFlags::TRANSIENT;
-        }
-
-        if reset_individual {
-            create_info.flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
-        }
-
-        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-        unsafe {
-            self.device
-                .create_command_pool(&create_info, self.allocation_callbacks.as_ref())
-        }
-        .expect("Out of memory")
-    }
-
-    pub fn destroy_command_pool(&self, pool: vk::CommandPool) {
-        unsafe {
-            self.device
-                .destroy_command_pool(pool, self.allocation_callbacks.as_ref());
-        }
-    }
-
-    pub fn allocate_command_buffers(&self, pool: vk::CommandPool, buffers: &mut [vk::CommandBuffer]) {
-        let alloc_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(buffers.len() as u32)
-            .build();
-
-        unsafe {
-            self.device
-                .fp_v1_0()
-                .allocate_command_buffers(self.device.handle(), &alloc_info, buffers.as_mut_ptr())
-                .result()
-                .expect("Out of memory");
-        }
-    }
-
-    pub fn free_command_buffers(&self, command_pool: vk::CommandPool, command_buffers: &[vk::CommandBuffer]) {
-        unsafe {
-            self.device.free_command_buffers(command_pool, command_buffers);
-        }
-    }
-
-    pub fn reset_command_buffer(&self, buffer: vk::CommandBuffer, release_memory: bool) {
-        let mut flags = Default::default();
-
-        if release_memory {
-            flags |= vk::CommandBufferResetFlags::RELEASE_RESOURCES;
-        }
-
-        unsafe {
-            self.device
-                .reset_command_buffer(buffer, flags)
-                .expect("Out of device memory");
-        }
-    }
-
-    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder {
-        CommandRecorder::new(&self.device, buffer)
-    }
-
-    pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {
-        unsafe {
-            self.device
-                .queue_submit(self.graphics_queue, submits, fence)
-                .expect("Unexpected error");
-        }
-    }
-
-    #[must_use]
     pub fn create_image_view(&self, create_info: &vk::ImageViewCreateInfo) -> vk::ImageView {
         unsafe {
             self.device
@@ -628,7 +443,6 @@ impl Vulkan {
         }
     }
 
-    #[must_use]
     pub fn create_frame_buffer(&self, create_info: &vk::FramebufferCreateInfo) -> vk::Framebuffer {
         unsafe {
             self.device
@@ -641,22 +455,6 @@ impl Vulkan {
         unsafe {
             self.device
                 .destroy_framebuffer(frame_buffer, self.allocation_callbacks.as_ref());
-        }
-    }
-
-    #[must_use]
-    pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
-        unsafe {
-            self.device
-                .create_render_pass(create_info, self.allocation_callbacks.as_ref())
-        }
-        .expect("Out of memory")
-    }
-
-    pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
-        unsafe {
-            self.device
-                .destroy_render_pass(renderpass, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -737,6 +535,247 @@ impl Vulkan {
             self.device
                 .bind_buffer_memory(buffer, memory, offset)
                 .expect("Out of memory");
+        }
+    }
+
+    /*
+     _____ _            _ _
+    |  __ (_)          | (_)
+    | |__) | _ __   ___| |_ _ __   ___
+    |  ___/ | '_ \ / _ \ | | '_ \ / _ \
+    | |   | | |_) |  __/ | | | | |  __/
+    |_|   |_| .__/ \___|_|_|_| |_|\___|
+            | |
+            |_|
+    */
+
+    /// Creates a new shader from SPIR-V source. Note that the source must be
+    /// 4-byte aligned to be accepted as valid.
+    pub fn create_shader(&self, source: &[u8]) -> vk::ShaderModule {
+        if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
+            let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
+            let ci = vk::ShaderModuleCreateInfo::builder().code(words);
+
+            // Only fails on out of memory, or unused extension errors (Vulkan
+            // 1.2; Aug 7, 2021)
+            unsafe {
+                self.device
+                    .create_shader_module(&ci, self.allocation_callbacks.as_ref())
+            }
+            .expect("Out of memory")
+        } else {
+            panic!("Shader source must be aligned to 4-byte words")
+        }
+    }
+
+    pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
+        unsafe {
+            self.device
+                .create_pipeline_layout(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
+    }
+
+    pub fn create_graphics_pipeline(&self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
+        let mut pipeline = vk::Pipeline::default();
+
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
+        unsafe {
+            self.device
+                .fp_v1_0()
+                .create_graphics_pipelines(
+                    self.device.handle(),
+                    self.pipeline_cache,
+                    1,
+                    create_info,
+                    std::ptr::null(),
+                    &mut pipeline,
+                )
+                .result()
+                .expect("Out of memory");
+        }
+
+        pipeline
+    }
+
+    pub fn destroy_pipeline(&self, pipeline: vk::Pipeline) {
+        unsafe {
+            self.device
+                .destroy_pipeline(pipeline, self.allocation_callbacks.as_ref());
+        }
+    }
+
+    /*
+      _____                                          _
+     / ____|                                        | |
+    | |     ___  _ __ ___  _ __ ___   __ _ _ __   __| |___
+    | |    / _ \| '_ ` _ \| '_ ` _ \ / _` | '_ \ / _` / __|
+    | |___| (_) | | | | | | | | | | | (_| | | | | (_| \__ \
+     \_____\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|___/
+    */
+
+    pub fn create_graphics_command_pool(&self, transient: bool, reset_individual: bool) -> vk::CommandPool {
+        let mut create_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(self.gpu.graphics_queue_index)
+            .build();
+
+        if transient {
+            create_info.flags |= vk::CommandPoolCreateFlags::TRANSIENT;
+        }
+
+        if reset_individual {
+            create_info.flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
+        }
+
+        // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
+        unsafe {
+            self.device
+                .create_command_pool(&create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
+    }
+
+    pub fn destroy_command_pool(&self, pool: vk::CommandPool) {
+        unsafe {
+            self.device
+                .destroy_command_pool(pool, self.allocation_callbacks.as_ref());
+        }
+    }
+
+    pub fn allocate_command_buffers(&self, pool: vk::CommandPool, buffers: &mut [vk::CommandBuffer]) {
+        let alloc_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(buffers.len() as u32)
+            .build();
+
+        unsafe {
+            self.device
+                .fp_v1_0()
+                .allocate_command_buffers(self.device.handle(), &alloc_info, buffers.as_mut_ptr())
+                .result()
+                .expect("Out of memory");
+        }
+    }
+
+    pub fn free_command_buffers(&self, command_pool: vk::CommandPool, command_buffers: &[vk::CommandBuffer]) {
+        unsafe {
+            self.device.free_command_buffers(command_pool, command_buffers);
+        }
+    }
+
+    pub fn reset_command_buffer(&self, buffer: vk::CommandBuffer, release_memory: bool) {
+        let mut flags = Default::default();
+
+        if release_memory {
+            flags |= vk::CommandBufferResetFlags::RELEASE_RESOURCES;
+        }
+
+        unsafe {
+            self.device
+                .reset_command_buffer(buffer, flags)
+                .expect("Out of device memory");
+        }
+    }
+
+    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder {
+        CommandRecorder::new(&self.device, buffer)
+    }
+
+    pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {
+        unsafe {
+            self.device
+                .queue_submit(self.graphics_queue, submits, fence)
+                .expect("Unexpected error");
+        }
+    }
+
+    pub fn create_render_pass(&self, create_info: &vk::RenderPassCreateInfo) -> vk::RenderPass {
+        unsafe {
+            self.device
+                .create_render_pass(create_info, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
+    }
+
+    pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
+        unsafe {
+            self.device
+                .destroy_render_pass(renderpass, self.allocation_callbacks.as_ref());
+        }
+    }
+
+    /*
+      _____                  _                     _          _   _
+     / ____|                | |                   (_)        | | (_)
+    | (___  _   _ _ __   ___| |__  _ __ ___  _ __  _ ______ _| |_ _  ___  _ __
+     \___ \| | | | '_ \ / __| '_ \| '__/ _ \| '_ \| |_  / _` | __| |/ _ \| '_ \
+     ____) | |_| | | | | (__| | | | | | (_) | | | | |/ / (_| | |_| | (_) | | | |
+    |_____/ \__, |_| |_|\___|_| |_|_|  \___/|_| |_|_/___\__,_|\__|_|\___/|_| |_|
+             __/ |
+            |___/
+    */
+
+    pub fn create_fence(&self, signalled: bool) -> vk::Fence {
+        let ci = vk::FenceCreateInfo {
+            flags: if signalled {
+                vk::FenceCreateFlags::SIGNALED
+            } else {
+                vk::FenceCreateFlags::empty()
+            },
+            ..Default::default()
+        };
+
+        unsafe {
+            self.device
+                .create_fence(&ci, self.allocation_callbacks.as_ref())
+                .expect("Out of memory")
+        }
+    }
+
+    pub fn free_fence(&self, fence: vk::Fence) {
+        unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
+
+        unsafe {
+            self.device.destroy_fence(fence, self.allocation_callbacks.as_ref());
+        }
+    }
+
+    /// `true` of success, `false` for time out
+    pub fn wait_for_fences(&self, fences: &[vk::Fence], timeout: u64) -> bool {
+        let r = unsafe {
+            self.device.fp_v1_0().wait_for_fences(
+                self.device.handle(),
+                fences.len() as u32,
+                fences.as_ptr(),
+                vk::TRUE,
+                timeout,
+            )
+        };
+
+        match r {
+            vk::Result::SUCCESS => true,
+            vk::Result::TIMEOUT => false,
+            any => panic!("Unexpected error: {:?}", any),
+        }
+    }
+
+    pub fn reset_fences(&self, fences: &[vk::Fence]) {
+        unsafe {
+            self.device.reset_fences(fences).expect("Out of memory");
+        }
+    }
+
+    pub fn create_semaphore(&self) -> vk::Semaphore {
+        let ci = vk::SemaphoreCreateInfo::builder();
+        unsafe { self.device.create_semaphore(&ci, self.allocation_callbacks.as_ref()) }.expect("Out of memory")
+    }
+
+    pub fn free_semaphore(&self, semaphore: vk::Semaphore) {
+        unsafe {
+            self.device
+                .destroy_semaphore(semaphore, self.allocation_callbacks.as_ref());
         }
     }
 }
