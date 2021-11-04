@@ -125,7 +125,6 @@ impl RendererWindow {
             extent: window_extent,
         };
 
-        // record command buffer
         let cmd = VULKAN.record_command_buffer(frame.command_buffer);
         record_command_buffer(
             &cmd,
