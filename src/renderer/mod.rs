@@ -1,5 +1,5 @@
 mod shared;
-pub use shared::{Vertex};
+pub use shared::Vertex;
 
 mod context;
 pub use context::RendererWindow;

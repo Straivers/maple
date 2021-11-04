@@ -7,9 +7,8 @@ use super::{recorder::CommandRecorder, vulkan::Vulkan};
 use crate::{
     color::Color,
     constants::{TRIANGLE_FRAGMENT_SHADER_SPIRV, TRIANGLE_VERTEX_SHADER_SPIRV},
-    dpi::PhysicalSize,
     geometry::float2,
-    library::Library,
+    sys::{Library, PhysicalSize},
 };
 
 lazy_static! {

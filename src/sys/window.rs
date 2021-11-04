@@ -1,6 +1,5 @@
 use std::{convert::TryInto, sync::Once};
 
-use crate::{array_vec::ArrayVec, dpi::PhysicalSize};
 use win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
     System::{LibraryLoader::GetModuleHandleW, Threading::MsgWaitForMultipleObjects, WindowsProgramming::INFINITE},
@@ -12,6 +11,9 @@ use win32::{
         WS_OVERLAPPEDWINDOW,
     },
 };
+
+use super::dpi::PhysicalSize;
+use crate::array_vec::ArrayVec;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
 

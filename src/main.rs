@@ -1,19 +1,14 @@
-//! Maple Engine entry point
-
-use crate::dpi::PhysicalSize;
-use renderer::RendererWindow;
-
-use clap::App;
-use window::{EventLoopControl, WindowEvent};
-
 mod array_vec;
 mod color;
 mod constants;
-mod dpi;
 mod geometry;
-mod library;
 mod renderer;
-mod window;
+mod sys;
+
+use clap::App;
+
+use renderer::RendererWindow;
+use sys::{EventLoopControl, PhysicalSize, WindowEvent};
 
 const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -49,7 +44,7 @@ pub fn spawn_window(title: &str) {
     let mut renderer = renderer::Executor::new();
     let mut window_size = PhysicalSize { width: 0, height: 0 };
 
-    window::window(title.to_owned(), |control, event| {
+    sys::window(title.to_owned(), |control, event| {
         match event {
             WindowEvent::Created { size } => {
                 window_size = size;

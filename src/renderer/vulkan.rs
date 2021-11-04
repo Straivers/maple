@@ -15,7 +15,10 @@ use ash::{
 };
 
 use super::recorder::CommandRecorder;
-use crate::{array_vec::ArrayVec, library::Library, window::WindowHandle};
+use crate::{
+    array_vec::ArrayVec,
+    sys::{Library, WindowHandle},
+};
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
 const MAX_QUEUE_FAMILIES: usize = 64;
