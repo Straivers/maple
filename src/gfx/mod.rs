@@ -1,3 +1,9 @@
+mod color;
+pub use color::Color;
+
+mod geometry;
+pub use geometry::*;
+
 mod shared;
 pub use shared::Vertex;
 

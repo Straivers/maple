@@ -1,6 +1,4 @@
 mod array_vec;
-mod color;
-mod geometry;
 mod gfx;
 mod sys;
 

@@ -3,12 +3,13 @@ use std::{ffi::CStr, process::abort};
 use ash::vk;
 use lazy_static::lazy_static;
 
-use super::{recorder::CommandRecorder, vulkan::Vulkan};
-use crate::{
+use super::{
     color::Color,
-    geometry::float2,
-    sys::{Library, PhysicalSize},
+    geometry::{Extent, Point},
+    recorder::CommandRecorder,
+    vulkan::Vulkan,
 };
+use crate::sys::{Library, PhysicalSize};
 
 pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_vert.spv");
 pub const TRIANGLE_FRAGMENT_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_frag.spv");
@@ -35,7 +36,7 @@ lazy_static! {
     pub static ref PIPELINE_LAYOUT: vk::PipelineLayout = {
         let push_constants = [vk::PushConstantRange {
             offset: 0,
-            size: std::mem::size_of::<float2>() as u32,
+            size: std::mem::size_of::<Extent>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
@@ -46,7 +47,7 @@ lazy_static! {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vertex {
-    pub position: float2,
+    pub position: Point,
     pub color: Color,
 }
 
@@ -68,7 +69,7 @@ impl Vertex {
             binding: 0,
             location: 1,
             format: vk::Format::R8G8B8A8_UNORM,
-            offset: std::mem::size_of::<float2>() as u32,
+            offset: std::mem::size_of::<Point>() as u32,
         },
     ];
 }
@@ -153,7 +154,10 @@ pub fn record_command_buffer(
 
     cmd.set_scissor(&[viewport]);
 
-    let scale = float2(2.0 / viewport.extent.width as f32, 2.0 / viewport.extent.height as f32);
+    let scale = Extent {
+        width: 2.0 / viewport.extent.width as f32,
+        height: 2.0 / viewport.extent.height as f32,
+    };
 
     cmd.push_constants(layout, vk::ShaderStageFlags::VERTEX, 0, &scale);
 
