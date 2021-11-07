@@ -1,12 +1,12 @@
 mod array_vec;
 mod color;
 mod geometry;
-mod renderer;
+mod gfx;
 mod sys;
 
 use clap::App;
 
-use renderer::RendererWindow;
+use gfx::RendererWindow;
 use sys::{EventLoopControl, PhysicalSize, WindowEvent};
 
 const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -40,7 +40,7 @@ fn run(_cli_options: &CliOptions) {
 
 pub fn spawn_window(title: &str) {
     let mut context = RendererWindow::new();
-    let mut renderer = renderer::Executor::new();
+    let mut renderer = gfx::Executor::new();
     let mut window_size = PhysicalSize { width: 0, height: 0 };
 
     sys::window(title.to_owned(), |control, event| {
@@ -55,6 +55,10 @@ pub fn spawn_window(title: &str) {
             WindowEvent::CloseRequested {} => {
                 control.destroy();
             }
+            WindowEvent::CursorMove { x_pos, y_pos } => {}
+            WindowEvent::MouseButton { button, state } => {}
+            WindowEvent::ScrollWheel { scroll_x, scroll_y } => {}
+            WindowEvent::Char { codepoint } => {}
             WindowEvent::Resized { size } => {
                 window_size = size;
 
@@ -76,12 +80,6 @@ pub fn spawn_window(title: &str) {
                         let _ = renderer.execute(&request);
                     }
                 }
-            }
-            WindowEvent::CursorMove { x_pos, y_pos } => {}
-            WindowEvent::MouseButton { button, state } => {}
-            WindowEvent::ScrollWheel { scroll_x, scroll_y } => {}
-            WindowEvent::Char { codepoint } => {
-                println!("Char: {}", codepoint);
             }
         }
         EventLoopControl::Continue

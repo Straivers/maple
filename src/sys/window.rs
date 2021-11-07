@@ -6,8 +6,8 @@ use win32::{
     ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND,
     IDC_ARROW, LPARAM, LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
     WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
-    WS_OVERLAPPEDWINDOW, WM_PAINT,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
+    WS_OVERLAPPEDWINDOW,
 };
 
 use super::{
@@ -309,9 +309,7 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                     window.dispatch(WindowEvent::Char { codepoint });
                 }
             }
-            WM_PAINT => {
-                window.dispatch(WindowEvent::Update {})
-            }
+            WM_PAINT => window.dispatch(WindowEvent::Update {}),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 
