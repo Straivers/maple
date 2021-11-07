@@ -3,11 +3,11 @@ use std::{convert::TryInto, sync::Once};
 use win32::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetLastError, GetMessageW, GetModuleHandleW,
     GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW,
-    ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND,
-    IDC_ARROW, LPARAM, LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
-    WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
-    WS_OVERLAPPEDWINDOW,
+    ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA,
+    HINSTANCE, HWND, IDC_ARROW, LPARAM, LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE,
+    WM_CHAR, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT,
+    WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM, WS_OVERLAPPEDWINDOW,
 };
 
 use super::{
@@ -46,6 +46,7 @@ pub enum WindowEvent {
     Update {},
     CursorMove { x_pos: i16, y_pos: i16 },
     MouseButton { button: MouseButton, state: ButtonState },
+    DoubleClick { button: MouseButton },
     ScrollWheel { scroll_x: f32, scroll_y: f32 },
     Char { codepoint: char },
 }
@@ -81,7 +82,7 @@ where
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
 
         let class = WNDCLASSW {
-            style: CS_VREDRAW | CS_HREDRAW,
+            style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS,
             hInstance: hinstance,
             lpfnWndProc: Some(wndproc_trampoline),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
@@ -286,6 +287,15 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
             WM_RBUTTONUP => window.dispatch(WindowEvent::MouseButton {
                 button: MouseButton::Right,
                 state: ButtonState::Released,
+            }),
+            WM_LBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+                button: MouseButton::Left,
+            }),
+            WM_RBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+                button: MouseButton::Right,
+            }),
+            WM_MBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+                button: MouseButton::Middle,
             }),
             WM_MOUSEWHEEL => window.dispatch(WindowEvent::ScrollWheel {
                 scroll_x: 0.0,

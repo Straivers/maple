@@ -57,6 +57,7 @@ pub fn spawn_window(title: &str) {
             }
             WindowEvent::CursorMove { x_pos, y_pos } => {}
             WindowEvent::MouseButton { button, state } => {}
+            WindowEvent::DoubleClick { button } => {}
             WindowEvent::ScrollWheel { scroll_x, scroll_y } => {}
             WindowEvent::Char { codepoint } => {}
             WindowEvent::Resized { size } => {
