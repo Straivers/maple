@@ -1,6 +1,5 @@
 mod array_vec;
 mod color;
-mod constants;
 mod geometry;
 mod renderer;
 mod sys;
@@ -68,7 +67,7 @@ pub fn spawn_window(title: &str) {
                     }
                 }
             }
-            WindowEvent::Update { input } => {
+            WindowEvent::Update {} => {
                 let vertices = [];
                 let indices = [];
 
@@ -77,6 +76,12 @@ pub fn spawn_window(title: &str) {
                         let _ = renderer.execute(&request);
                     }
                 }
+            }
+            WindowEvent::CursorMove { x_pos, y_pos } => {}
+            WindowEvent::MouseButton { button, state } => {}
+            WindowEvent::ScrollWheel { scroll_x, scroll_y } => {}
+            WindowEvent::Char { codepoint } => {
+                println!("Char: {}", codepoint);
             }
         }
         EventLoopControl::Continue

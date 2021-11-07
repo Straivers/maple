@@ -1,21 +1,18 @@
 use std::{convert::TryInto, sync::Once};
 
 use win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, RECT, WPARAM},
-    System::{LibraryLoader::GetModuleHandleW, Threading::MsgWaitForMultipleObjects, WindowsProgramming::INFINITE},
-    UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowLongPtrW, GetWindowRect,
-        LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage,
-        CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MSG, PM_REMOVE, QS_ALLEVENTS,
-        SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN,
-        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT,
-        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
-    },
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetLastError, GetMessageW, GetModuleHandleW,
+    GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW,
+    ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND,
+    IDC_ARROW, LPARAM, LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
+    WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
+    WS_OVERLAPPEDWINDOW, WM_PAINT,
 };
 
 use super::{
     dpi::PhysicalSize,
-    input::{ButtonState, FrameInput, MouseButton},
+    input::{ButtonState, MouseButton},
 };
 use crate::array_vec::ArrayVec;
 
@@ -41,12 +38,16 @@ pub struct WindowControl {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum WindowEvent<'a> {
+pub enum WindowEvent {
     Created { size: PhysicalSize },
     Destroyed {},
     CloseRequested {},
     Resized { size: PhysicalSize },
-    Update { input: &'a FrameInput },
+    Update {},
+    CursorMove { x_pos: i16, y_pos: i16 },
+    MouseButton { button: MouseButton, state: ButtonState },
+    ScrollWheel { scroll_x: f32, scroll_y: f32 },
+    Char { codepoint: char },
 }
 
 impl WindowControl {
@@ -74,7 +75,7 @@ where
     let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
     let hinstance = unsafe { GetModuleHandleW(None) };
-    assert_ne!(hinstance, HINSTANCE::NULL);
+    assert_ne!(hinstance, HINSTANCE::default());
 
     REGISTER_CLASS.call_once(|| {
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
@@ -116,7 +117,7 @@ where
         control: WindowControl {
             handle: WindowHandle { hwnd, hinstance },
         },
-        input: FrameInput::new(),
+        high_surrogate: 0,
     };
 
     {
@@ -134,8 +135,8 @@ where
         });
     }
 
-    // Is there a way to make sure both window_trait and window_trait_ptr are on the same cache line?
-    // Fat pointer
+    // Is there a way to make sure both window_trait and window_trait_ptr are on
+    // the same cache line? Fat pointer
     let mut window_trait: &mut dyn WindowT = &mut window;
     // Pointer to fat pointer
     let window_trait_ptr: *mut &mut dyn WindowT = &mut window_trait;
@@ -148,8 +149,16 @@ where
     let mut msg = MSG::default();
     unsafe {
         loop {
-            MsgWaitForMultipleObjects(0, std::ptr::null(), false, INFINITE, QS_ALLEVENTS);
-            window.input.advance();
+            let ret = GetMessageW(&mut msg, None, 0, 0).0;
+            if ret == -1 {
+                panic!("GetMessage failed. Error: {:?}", GetLastError());
+            } else if ret == 0 {
+                break;
+            } else {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
                 if msg.message == WM_QUIT {
                     DestroyWindow(hwnd);
@@ -158,8 +167,6 @@ where
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-
-            (window.callback)(&window.control, WindowEvent::Update { input: &window.input });
         }
     }
 }
@@ -170,7 +177,7 @@ where
 {
     callback: Callback,
     control: WindowControl,
-    input: FrameInput,
+    high_surrogate: u16,
 }
 
 impl<Callback> WindowT for Window<Callback>
@@ -189,8 +196,12 @@ where
         }
     }
 
-    fn input_mut(&mut self) -> &mut FrameInput {
-        &mut self.input
+    fn save_high_surrogate(&mut self, value: u16) {
+        self.high_surrogate = value;
+    }
+
+    fn take_high_surrogate(&mut self) -> u16 {
+        std::mem::take(&mut self.high_surrogate)
     }
 }
 
@@ -199,7 +210,9 @@ trait WindowT {
 
     fn dispatch(&mut self, event: WindowEvent);
 
-    fn input_mut(&mut self) -> &mut FrameInput;
+    fn save_high_surrogate(&mut self, value: u16);
+
+    fn take_high_surrogate(&mut self) -> u16;
 }
 
 unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -246,19 +259,59 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                 */
                 return LRESULT(1);
             }
-            WM_MOUSEMOVE => {
-                let input = window.input_mut();
-                input.cursor_x = lparam.0 as i16;
-                input.cursor_y = (lparam.0 >> 16) as i16;
+            WM_MOUSEMOVE => window.dispatch(WindowEvent::CursorMove {
+                x_pos: lparam.0 as i16,
+                y_pos: (lparam.0 >> 16) as i16,
+            }),
+            WM_LBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Left,
+                state: ButtonState::Pressed,
+            }),
+            WM_LBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Left,
+                state: ButtonState::Released,
+            }),
+            WM_MBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Middle,
+                state: ButtonState::Pressed,
+            }),
+            WM_MBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Middle,
+                state: ButtonState::Released,
+            }),
+            WM_RBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Right,
+                state: ButtonState::Pressed,
+            }),
+            WM_RBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+                button: MouseButton::Right,
+                state: ButtonState::Released,
+            }),
+            WM_MOUSEWHEEL => window.dispatch(WindowEvent::ScrollWheel {
+                scroll_x: 0.0,
+                scroll_y: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+            }),
+            WM_MOUSEHWHEEL => window.dispatch(WindowEvent::ScrollWheel {
+                scroll_x: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+                scroll_y: 0.0,
+            }),
+            WM_CHAR => {
+                if (wparam.0 & 0xD800) == 0xD800 {
+                    window.save_high_surrogate(wparam.0 as u16);
+                } else {
+                    let codepoint = char::from_u32(if (wparam.0 & 0xDC00) == 0xDC00 {
+                        (((window.take_high_surrogate() as u32 - 0xD800) << 10) | (wparam.0 as u32 - 0xDC00)) + 0x10000
+                    } else {
+                        wparam.0 as u32
+                    })
+                    .unwrap();
+
+                    window.dispatch(WindowEvent::Char { codepoint });
+                }
             }
-            WM_LBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Left].set(ButtonState::Pressed),
-            WM_LBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Left].set(ButtonState::Released),
-            WM_MBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Middle].set(ButtonState::Pressed),
-            WM_MBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Middle].set(ButtonState::Released),
-            WM_RBUTTONDOWN => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Pressed),
-            WM_RBUTTONUP => window.input_mut().mouse_buttons[MouseButton::Right].set(ButtonState::Released),
-            WM_MOUSEWHEEL => window.input_mut().cursor_wheel_y = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-            WM_MOUSEHWHEEL => {window.input_mut().cursor_wheel_x = (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32); println!("hi") },
+            WM_PAINT => {
+                window.dispatch(WindowEvent::Update {})
+            }
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 

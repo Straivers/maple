@@ -1,12 +1,6 @@
 use std::ffi::{c_void, CStr};
 
-use win32::{
-    Foundation::{HINSTANCE, PSTR},
-    System::{
-        Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS},
-        LibraryLoader::{GetProcAddress, LoadLibraryW},
-    },
-};
+use win32::{GetProcAddress, LoadLibraryW, SetErrorMode, HINSTANCE, PSTR, SEM_FAILCRITICALERRORS};
 
 #[derive(Debug)]
 pub struct Library {
@@ -20,7 +14,7 @@ impl Library {
         // expect that the application will be loading libraries willy-nilly, so
         // we should be ok.
         let library = unsafe { LoadLibraryW(path) };
-        if library.is_null() {
+        if library == HINSTANCE::default() {
             None
         } else {
             unsafe { SetErrorMode(SEM_FAILCRITICALERRORS) };

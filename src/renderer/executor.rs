@@ -4,7 +4,7 @@
 //! Communication between the render thread and window threads occurs through
 //! the types defined in the render_message module.
 
-use ash::vk::{self, PresentInfoKHR};
+use ash::vk;
 
 use super::shared::*;
 

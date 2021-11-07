@@ -1,10 +1,11 @@
 use ash::vk;
 
 use super::{shared::*, vulkan::SwapchainData};
-use crate::{
-    constants::{DEFAULT_VERTEX_BUFFER_SIZE, FRAMES_IN_FLIGHT, MAX_SWAPCHAIN_DEPTH},
-    sys::{PhysicalSize, WindowHandle},
-};
+use crate::sys::{PhysicalSize, WindowHandle};
+
+pub const FRAMES_IN_FLIGHT: usize = 2;
+pub const DEFAULT_VERTEX_BUFFER_SIZE: usize = 8192;
+pub const MAX_SWAPCHAIN_DEPTH: usize = 8;
 
 pub struct SwapchainImage {
     view: vk::ImageView,

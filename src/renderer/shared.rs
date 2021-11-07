@@ -6,10 +6,12 @@ use lazy_static::lazy_static;
 use super::{recorder::CommandRecorder, vulkan::Vulkan};
 use crate::{
     color::Color,
-    constants::{TRIANGLE_FRAGMENT_SHADER_SPIRV, TRIANGLE_VERTEX_SHADER_SPIRV},
     geometry::float2,
     sys::{Library, PhysicalSize},
 };
+
+pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_vert.spv");
+pub const TRIANGLE_FRAGMENT_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_frag.spv");
 
 lazy_static! {
     pub static ref VULKAN: Vulkan = {
