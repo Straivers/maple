@@ -1,6 +1,8 @@
 mod array_vec;
+mod data_store;
 mod gfx;
 mod sys;
+mod ui;
 
 use clap::App;
 
@@ -22,7 +24,7 @@ pub fn main() {
 
     let options = CliOptions {};
 
-    run(&options)
+    run(&options);
 }
 
 #[derive(Debug, Clone, Copy)]
