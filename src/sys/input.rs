@@ -2,7 +2,7 @@
 #[derive(Debug, Clone, Copy)]
 pub enum ButtonState {
     Released = 0,
-    Pressed = 1,
+    Pressed  = 1,
 }
 
 impl Default for ButtonState {
@@ -15,9 +15,9 @@ impl Default for ButtonState {
 #[derive(Debug, Clone, Copy)]
 pub enum MouseButton {
     Unknown = 0,
-    Left = 1,
-    Middle = 2,
-    Right = 3,
+    Left    = 1,
+    Middle  = 2,
+    Right   = 3,
 }
 
 impl Default for MouseButton {

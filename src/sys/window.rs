@@ -1,13 +1,15 @@
 use std::{convert::TryInto, sync::Once};
 
 use win32::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetLastError, GetMessageW, GetModuleHandleW,
-    GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW,
-    ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA,
-    HINSTANCE, HWND, IDC_ARROW, LPARAM, LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE,
-    WM_CHAR, WM_CLOSE, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT,
-    WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetLastError, GetMessageW,
+    GetModuleHandleW, GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage,
+    RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS,
+    CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND, IDC_ARROW, LPARAM,
+    LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
+    WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_PAINT, WM_QUIT, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
+    WS_OVERLAPPEDWINDOW,
 };
 
 use super::{
@@ -39,16 +41,33 @@ pub struct WindowControl {
 
 #[derive(Debug, Clone, Copy)]
 pub enum WindowEvent {
-    Created { size: PhysicalSize },
+    Created {
+        size: PhysicalSize,
+    },
     Destroyed {},
     CloseRequested {},
-    Resized { size: PhysicalSize },
+    Resized {
+        size: PhysicalSize,
+    },
     Update {},
-    CursorMove { x_pos: i16, y_pos: i16 },
-    MouseButton { button: MouseButton, state: ButtonState },
-    DoubleClick { button: MouseButton },
-    ScrollWheel { scroll_x: f32, scroll_y: f32 },
-    Char { codepoint: char },
+    CursorMove {
+        x_pos: i16,
+        y_pos: i16,
+    },
+    MouseButton {
+        button: MouseButton,
+        state: ButtonState,
+    },
+    DoubleClick {
+        button: MouseButton,
+    },
+    ScrollWheel {
+        scroll_x: f32,
+        scroll_y: f32,
+    },
+    Char {
+        codepoint: char,
+    },
 }
 
 impl WindowControl {
@@ -216,7 +235,12 @@ trait WindowT {
     fn take_high_surrogate(&mut self) -> u16;
 }
 
-unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn wndproc_trampoline(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     // Pointer to fat pointer
     let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut &mut dyn WindowT;
 
@@ -229,8 +253,14 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
         match msg {
             WM_CREATE => {
                 let createstruct = &(*(lparam.0 as *const CREATESTRUCTW));
-                let width = createstruct.cx.try_into().expect("Window width out of bounds!");
-                let height = createstruct.cy.try_into().expect("Window height out of bounds!");
+                let width = createstruct
+                    .cx
+                    .try_into()
+                    .expect("Window width out of bounds!");
+                let height = createstruct
+                    .cy
+                    .try_into()
+                    .expect("Window height out of bounds!");
                 window.dispatch(WindowEvent::Created {
                     size: PhysicalSize { width, height },
                 });
@@ -310,7 +340,9 @@ unsafe extern "system" fn wndproc_trampoline(hwnd: HWND, msg: u32, wparam: WPARA
                     window.save_high_surrogate(wparam.0 as u16);
                 } else {
                     let codepoint = char::from_u32(if (wparam.0 & 0xDC00) == 0xDC00 {
-                        (((window.take_high_surrogate() as u32 - 0xD800) << 10) | (wparam.0 as u32 - 0xDC00)) + 0x10000
+                        (((window.take_high_surrogate() as u32 - 0xD800) << 10)
+                            | (wparam.0 as u32 - 0xDC00))
+                            + 0x10000
                     } else {
                         wparam.0 as u32
                     })

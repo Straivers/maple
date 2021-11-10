@@ -23,7 +23,8 @@ impl Library {
     }
 
     pub fn get_symbol(&self, path: &CStr) -> Option<*mut c_void> {
-        let symbol = unsafe { GetProcAddress(self.library, PSTR(path.to_bytes_with_nul().as_ptr() as _)) };
+        let symbol =
+            unsafe { GetProcAddress(self.library, PSTR(path.to_bytes_with_nul().as_ptr() as _)) };
 
         symbol.map(|s| s as _)
     }

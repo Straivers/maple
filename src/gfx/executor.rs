@@ -46,7 +46,13 @@ impl Executor {
         }
     }
 
-    fn submit(&mut self, commands: vk::CommandBuffer, wait: vk::Semaphore, signal: vk::Semaphore, fence: vk::Fence) {
+    fn submit(
+        &mut self,
+        commands: vk::CommandBuffer,
+        wait: vk::Semaphore,
+        signal: vk::Semaphore,
+        fence: vk::Fence,
+    ) {
         let submit_info = vk::SubmitInfo {
             s_type: vk::StructureType::SUBMIT_INFO,
             p_next: std::ptr::null(),

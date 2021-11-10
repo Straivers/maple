@@ -21,11 +21,17 @@ impl<'a> CommandRecorder<'a> {
 
     pub fn end(&self) {
         unsafe {
-            self.device.end_command_buffer(self.buffer).expect("Out of memory");
+            self.device
+                .end_command_buffer(self.buffer)
+                .expect("Out of memory");
         }
     }
 
-    pub fn begin_render_pass(&self, render_pass_info: &vk::RenderPassBeginInfo, subpass_contents: vk::SubpassContents) {
+    pub fn begin_render_pass(
+        &self,
+        render_pass_info: &vk::RenderPassBeginInfo,
+        subpass_contents: vk::SubpassContents,
+    ) {
         unsafe {
             self.device
                 .cmd_begin_render_pass(self.buffer, render_pass_info, subpass_contents);
@@ -40,7 +46,8 @@ impl<'a> CommandRecorder<'a> {
 
     pub fn bind_pipeline(&self, bind_point: vk::PipelineBindPoint, pipeline: vk::Pipeline) {
         unsafe {
-            self.device.cmd_bind_pipeline(self.buffer, bind_point, pipeline);
+            self.device
+                .cmd_bind_pipeline(self.buffer, bind_point, pipeline);
         }
     }
 
@@ -78,7 +85,10 @@ impl<'a> CommandRecorder<'a> {
         constant: &T,
     ) {
         unsafe {
-            let bytes = std::slice::from_raw_parts(constant as *const T as *const u8, std::mem::size_of::<T>());
+            let bytes = std::slice::from_raw_parts(
+                constant as *const T as *const u8,
+                std::mem::size_of::<T>(),
+            );
             self.device
                 .cmd_push_constants(self.buffer, layout, stage, offset, bytes);
         }

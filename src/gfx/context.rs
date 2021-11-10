@@ -92,7 +92,12 @@ impl RendererWindow {
         self.init_images();
     }
 
-    pub fn draw(&mut self, window_size: PhysicalSize, vertices: &[Vertex], indices: &[u16]) -> Option<Request> {
+    pub fn draw(
+        &mut self,
+        window_size: PhysicalSize,
+        vertices: &[Vertex],
+        indices: &[u16],
+    ) -> Option<Request> {
         let frame_id = self.frame_id as usize;
         let frame = &mut self.frames[frame_id];
         let _ = VULKAN.wait_for_fences(&[frame.fence], u64::MAX);
@@ -105,7 +110,9 @@ impl RendererWindow {
 
         let acquire_semaphore = frame.acquire;
 
-        let image_index = if let Some(index) = VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore) {
+        let image_index = if let Some(index) =
+            VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore)
+        {
             index as usize
         } else {
             self.resize(window_extent);
@@ -156,7 +163,11 @@ impl RendererWindow {
         let _ = VULKAN.wait_for_fences(&fences, u64::MAX);
 
         let old_format = self.swapchain.format;
-        self.swapchain = VULKAN.create_or_resize_swapchain(self.surface, window_extent, Some(self.swapchain.handle));
+        self.swapchain = VULKAN.create_or_resize_swapchain(
+            self.surface,
+            window_extent,
+            Some(self.swapchain.handle),
+        );
 
         if old_format != self.swapchain.format {
             VULKAN.destroy_pipeline(self.pipeline);
@@ -211,8 +222,10 @@ impl RendererWindow {
 
     fn copy_data_to_gpu(frame: &mut Frame, vertices: &[Vertex], indices: &[u16]) -> vk::DeviceSize {
         let alignment = VULKAN.non_coherent_atom_size() as usize;
-        let vertex_buffer_size = ((std::mem::size_of_val(vertices) + alignment - 1) / alignment) * alignment;
-        let min_capacity = (vertex_buffer_size + std::mem::size_of_val(indices)).max(DEFAULT_VERTEX_BUFFER_SIZE) as u64;
+        let vertex_buffer_size =
+            ((std::mem::size_of_val(vertices) + alignment - 1) / alignment) * alignment;
+        let min_capacity = (vertex_buffer_size + std::mem::size_of_val(indices))
+            .max(DEFAULT_VERTEX_BUFFER_SIZE) as u64;
 
         if frame.buffer_size < min_capacity {
             VULKAN.destroy_buffer(frame.buffer);
@@ -250,12 +263,16 @@ impl RendererWindow {
         }
 
         unsafe {
-            let data = VULKAN.map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
+            let data =
+                VULKAN.map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
 
             let buffer = std::slice::from_raw_parts_mut(data as *mut _, vertices.len());
             buffer.copy_from_slice(vertices);
 
-            let buffer = std::slice::from_raw_parts_mut(data.add(vertex_buffer_size as usize) as *mut _, indices.len());
+            let buffer = std::slice::from_raw_parts_mut(
+                data.add(vertex_buffer_size as usize) as *mut _,
+                indices.len(),
+            );
             buffer.copy_from_slice(indices);
 
             // PERFORMANCE(David Z): This call is unecessary if the memory is

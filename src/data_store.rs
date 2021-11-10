@@ -26,7 +26,8 @@ impl SlotAllocator {
 
     fn alloc(&mut self) -> Option<SlotIndex> {
         if let Some(index) = self.freelist_head {
-            self.freelist_head = NonZeroU16::new(self.slots[index.get() as usize].value_index_or_next);
+            self.freelist_head =
+                NonZeroU16::new(self.slots[index.get() as usize].value_index_or_next);
             Some(SlotIndex(index))
         } else if self.slots.len() < (u16::MAX as usize) {
             let index = unsafe { NonZeroU16::new_unchecked(self.slots.len() as u16) };

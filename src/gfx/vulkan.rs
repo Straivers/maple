@@ -104,7 +104,8 @@ impl Vulkan {
 
         let mut debug_callback_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
-                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
             )
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(debug_callback));
@@ -116,10 +117,12 @@ impl Vulkan {
             let mut create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
 
             let mut layers = ArrayVec::<*const c_char, 1>::new();
-            let mut extensions = ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
+            let mut extensions =
+                ArrayVec::<_, 3>::from([SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME]);
 
             let enables = [vk::ValidationFeatureEnableEXT::BEST_PRACTICES];
-            let mut validation_features = vk::ValidationFeaturesEXT::builder().enabled_validation_features(&enables);
+            let mut validation_features =
+                vk::ValidationFeaturesEXT::builder().enabled_validation_features(&enables);
 
             if use_validation {
                 layers.push(VALIDATION_LAYER_NAME);
@@ -132,7 +135,8 @@ impl Vulkan {
                 .enabled_layer_names(layers.as_slice())
                 .enabled_extension_names(extensions.as_slice());
 
-            unsafe { library.create_instance(&create_info, allocation_callbacks.as_ref()) }.expect("Unexpected error")
+            unsafe { library.create_instance(&create_info, allocation_callbacks.as_ref()) }
+                .expect("Unexpected error")
         };
 
         let debug = if use_validation {
@@ -149,7 +153,8 @@ impl Vulkan {
         let surface_api = Surface::new(&library, &instance);
         let os_surface_api = Win32Surface::new(&library, &instance);
 
-        let gpu = select_physical_device(&instance, &os_surface_api).expect("No supported GPU found");
+        let gpu =
+            select_physical_device(&instance, &os_surface_api).expect("No supported GPU found");
 
         let gpu_properties = unsafe { instance.get_physical_device_properties(gpu.handle) };
 
@@ -180,8 +185,10 @@ impl Vulkan {
                 .enabled_extension_names(extensions.as_slice())
                 .enabled_features(&features);
 
-            unsafe { instance.create_device(gpu.handle, &create_info, allocation_callbacks.as_ref()) }
-                .expect("Unexpected error")
+            unsafe {
+                instance.create_device(gpu.handle, &create_info, allocation_callbacks.as_ref())
+            }
+            .expect("Unexpected error")
         };
 
         let swapchain_api = Swapchain::new(&instance, &device);
@@ -192,7 +199,8 @@ impl Vulkan {
         let pipeline_cache = {
             let create_info = vk::PipelineCacheCreateInfo::builder();
             // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
-            unsafe { device.create_pipeline_cache(&create_info, allocation_callbacks.as_ref()) }.expect("Out of memory")
+            unsafe { device.create_pipeline_cache(&create_info, allocation_callbacks.as_ref()) }
+                .expect("Out of memory")
         };
 
         Self {
@@ -273,8 +281,11 @@ impl Vulkan {
         old: Option<vk::SwapchainKHR>,
     ) -> SwapchainData {
         assert!(unsafe {
-            self.surface_api
-                .get_physical_device_surface_support(self.gpu.handle, self.gpu.present_queue_index, surface)
+            self.surface_api.get_physical_device_surface_support(
+                self.gpu.handle,
+                self.gpu.present_queue_index,
+                surface,
+            )
         }
         .unwrap_or(false));
 
@@ -294,7 +305,10 @@ impl Vulkan {
 
             *formats
                 .iter()
-                .find(|f| f.format == vk::Format::B8G8R8A8_SRGB && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                .find(|f| {
+                    f.format == vk::Format::B8G8R8A8_SRGB
+                        && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+                })
                 .unwrap_or(&formats[0])
         };
 
@@ -311,9 +325,10 @@ impl Vulkan {
         let image_size = {
             if capabilities.current_extent.width == u32::MAX {
                 vk::Extent2D {
-                    width: size
-                        .width
-                        .clamp(capabilities.min_image_extent.width, capabilities.max_image_extent.width),
+                    width: size.width.clamp(
+                        capabilities.min_image_extent.width,
+                        capabilities.max_image_extent.width,
+                    ),
                     height: size.height.clamp(
                         capabilities.min_image_extent.height,
                         capabilities.max_image_extent.height,
@@ -331,7 +346,8 @@ impl Vulkan {
                 capabilities.min_image_count
             }
         } else {
-            PREFERRED_SWAPCHAIN_LENGTH.clamp(capabilities.min_image_count, capabilities.max_image_count)
+            PREFERRED_SWAPCHAIN_LENGTH
+                .clamp(capabilities.min_image_count, capabilities.max_image_count)
         };
 
         let mut create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -367,8 +383,10 @@ impl Vulkan {
 
         if create_info.old_swapchain != vk::SwapchainKHR::null() {
             unsafe {
-                self.swapchain_api
-                    .destroy_swapchain(create_info.old_swapchain, self.allocation_callbacks.as_ref());
+                self.swapchain_api.destroy_swapchain(
+                    create_info.old_swapchain,
+                    self.allocation_callbacks.as_ref(),
+                );
             }
         }
 
@@ -388,19 +406,33 @@ impl Vulkan {
         }
     }
 
-    pub fn get_swapchain_images<const N: usize>(&self, swapchain: vk::SwapchainKHR) -> ArrayVec<vk::Image, N> {
+    pub fn get_swapchain_images<const N: usize>(
+        &self,
+        swapchain: vk::SwapchainKHR,
+    ) -> ArrayVec<vk::Image, N> {
         load_vk_objects(|count, buffer| unsafe {
-            self.swapchain_api
-                .fp()
-                .get_swapchain_images_khr(self.device.handle(), swapchain, count, buffer)
+            self.swapchain_api.fp().get_swapchain_images_khr(
+                self.device.handle(),
+                swapchain,
+                count,
+                buffer,
+            )
         })
         .unwrap()
     }
 
-    pub fn acquire_swapchain_image(&self, swapchain: &SwapchainData, acquire_semaphore: vk::Semaphore) -> Option<u32> {
+    pub fn acquire_swapchain_image(
+        &self,
+        swapchain: &SwapchainData,
+        acquire_semaphore: vk::Semaphore,
+    ) -> Option<u32> {
         match unsafe {
-            self.swapchain_api
-                .acquire_next_image(swapchain.handle, u64::MAX, acquire_semaphore, vk::Fence::null())
+            self.swapchain_api.acquire_next_image(
+                swapchain.handle,
+                u64::MAX,
+                acquire_semaphore,
+                vk::Fence::null(),
+            )
         } {
             Ok((index, is_suboptimal)) => {
                 if is_suboptimal {
@@ -443,7 +475,8 @@ impl Vulkan {
 
     pub fn destroy_image_view(&self, view: vk::ImageView) {
         unsafe {
-            self.device.destroy_image_view(view, self.allocation_callbacks.as_ref());
+            self.device
+                .destroy_image_view(view, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -472,7 +505,8 @@ impl Vulkan {
 
     pub fn destroy_buffer(&self, buffer: vk::Buffer) {
         unsafe {
-            self.device.destroy_buffer(buffer, self.allocation_callbacks.as_ref());
+            self.device
+                .destroy_buffer(buffer, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -480,7 +514,11 @@ impl Vulkan {
         unsafe { self.device.get_buffer_memory_requirements(buffer) }
     }
 
-    pub fn find_memory_type(&self, type_filter: u32, needed_properties: vk::MemoryPropertyFlags) -> Option<u32> {
+    pub fn find_memory_type(
+        &self,
+        type_filter: u32,
+        needed_properties: vk::MemoryPropertyFlags,
+    ) -> Option<u32> {
         for i in 0..self.gpu_memory_info.memory_type_count {
             if (type_filter & (1 << i)) != 0
                 && self.gpu_memory_info.memory_types[i as usize]
@@ -496,7 +534,9 @@ impl Vulkan {
 
     pub fn flush_mapped_memory_ranges(&self, ranges: &[vk::MappedMemoryRange]) {
         unsafe {
-            self.device.flush_mapped_memory_ranges(ranges).expect("Out of memory");
+            self.device
+                .flush_mapped_memory_ranges(ranges)
+                .expect("Out of memory");
         }
     }
 
@@ -530,7 +570,8 @@ impl Vulkan {
 
     pub fn free(&self, memory: vk::DeviceMemory) {
         unsafe {
-            self.device.free_memory(memory, self.allocation_callbacks.as_ref());
+            self.device
+                .free_memory(memory, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -557,7 +598,8 @@ impl Vulkan {
     /// 4-byte aligned to be accepted as valid.
     pub fn create_shader(&self, source: &[u8]) -> vk::ShaderModule {
         if source.len() % 4 == 0 && ((source.as_ptr() as usize) % 4) == 0 {
-            let words = unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
+            let words =
+                unsafe { std::slice::from_raw_parts(source.as_ptr().cast(), source.len() / 4) };
             let ci = vk::ShaderModuleCreateInfo::builder().code(words);
 
             // Only fails on out of memory, or unused extension errors (Vulkan
@@ -572,7 +614,10 @@ impl Vulkan {
         }
     }
 
-    pub fn create_pipeline_layout(&self, create_info: &vk::PipelineLayoutCreateInfo) -> vk::PipelineLayout {
+    pub fn create_pipeline_layout(
+        &self,
+        create_info: &vk::PipelineLayoutCreateInfo,
+    ) -> vk::PipelineLayout {
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
         unsafe {
             self.device
@@ -581,7 +626,10 @@ impl Vulkan {
         .expect("Out of memory")
     }
 
-    pub fn create_graphics_pipeline(&self, create_info: &vk::GraphicsPipelineCreateInfo) -> vk::Pipeline {
+    pub fn create_graphics_pipeline(
+        &self,
+        create_info: &vk::GraphicsPipelineCreateInfo,
+    ) -> vk::Pipeline {
         let mut pipeline = vk::Pipeline::default();
 
         // Only fails on out of memory (Vulkan 1.2; Aug 7, 2021)
@@ -619,7 +667,11 @@ impl Vulkan {
      \_____\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|___/
     */
 
-    pub fn create_graphics_command_pool(&self, transient: bool, reset_individual: bool) -> vk::CommandPool {
+    pub fn create_graphics_command_pool(
+        &self,
+        transient: bool,
+        reset_individual: bool,
+    ) -> vk::CommandPool {
         let mut create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(self.gpu.graphics_queue_index)
             .build();
@@ -647,7 +699,11 @@ impl Vulkan {
         }
     }
 
-    pub fn allocate_command_buffers(&self, pool: vk::CommandPool, buffers: &mut [vk::CommandBuffer]) {
+    pub fn allocate_command_buffers(
+        &self,
+        pool: vk::CommandPool,
+        buffers: &mut [vk::CommandBuffer],
+    ) {
         let alloc_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -663,9 +719,14 @@ impl Vulkan {
         }
     }
 
-    pub fn free_command_buffers(&self, command_pool: vk::CommandPool, command_buffers: &[vk::CommandBuffer]) {
+    pub fn free_command_buffers(
+        &self,
+        command_pool: vk::CommandPool,
+        command_buffers: &[vk::CommandBuffer],
+    ) {
         unsafe {
-            self.device.free_command_buffers(command_pool, command_buffers);
+            self.device
+                .free_command_buffers(command_pool, command_buffers);
         }
     }
 
@@ -742,7 +803,8 @@ impl Vulkan {
         unsafe { self.device.reset_fences(&[fence]) }.expect("Vulkan out of memory");
 
         unsafe {
-            self.device.destroy_fence(fence, self.allocation_callbacks.as_ref());
+            self.device
+                .destroy_fence(fence, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -773,7 +835,11 @@ impl Vulkan {
 
     pub fn create_semaphore(&self) -> vk::Semaphore {
         let ci = vk::SemaphoreCreateInfo::builder();
-        unsafe { self.device.create_semaphore(&ci, self.allocation_callbacks.as_ref()) }.expect("Out of memory")
+        unsafe {
+            self.device
+                .create_semaphore(&ci, self.allocation_callbacks.as_ref())
+        }
+        .expect("Out of memory")
     }
 
     pub fn free_semaphore(&self, semaphore: vk::Semaphore) {
@@ -791,16 +857,19 @@ impl Drop for Vulkan {
             let _ = self.device.device_wait_idle();
 
             if let Some(debug) = self.debug.as_ref() {
-                debug
-                    .api
-                    .destroy_debug_utils_messenger(debug.callback, self.allocation_callbacks.as_ref());
+                debug.api.destroy_debug_utils_messenger(
+                    debug.callback,
+                    self.allocation_callbacks.as_ref(),
+                );
             }
 
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, self.allocation_callbacks.as_ref());
 
-            self.device.destroy_device(self.allocation_callbacks.as_ref());
-            self.instance.destroy_instance(self.allocation_callbacks.as_ref());
+            self.device
+                .destroy_device(self.allocation_callbacks.as_ref());
+            self.instance
+                .destroy_instance(self.allocation_callbacks.as_ref());
         }
     }
 }
@@ -883,7 +952,9 @@ fn select_physical_device(instance: &Instance, surface_api: &Win32Surface) -> Op
     None
 }
 
-pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(mut func: F) -> Result<ArrayVec<T, COUNT>, vk::Result>
+pub(crate) fn load_vk_objects<T, F, const COUNT: usize>(
+    mut func: F,
+) -> Result<ArrayVec<T, COUNT>, vk::Result>
 where
     F: FnMut(*mut u32, *mut T) -> vk::Result,
 {

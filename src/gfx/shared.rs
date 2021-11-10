@@ -11,8 +11,10 @@ use super::{
 };
 use crate::sys::{Library, PhysicalSize};
 
-pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_vert.spv");
-pub const TRIANGLE_FRAGMENT_SHADER_SPIRV: &[u8] = include_bytes!("../../shaders/simple_vertex_frag.spv");
+pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] =
+    include_bytes!("../../shaders/simple_vertex_vert.spv");
+pub const TRIANGLE_FRAGMENT_SHADER_SPIRV: &[u8] =
+    include_bytes!("../../shaders/simple_vertex_frag.spv");
 
 lazy_static! {
     pub static ref VULKAN: Vulkan = {
@@ -31,8 +33,10 @@ lazy_static! {
         let library = Library::load("vulkan-1").unwrap();
         Vulkan::new(library, verify)
     };
-    pub static ref VERTEX_SHADER: vk::ShaderModule = VULKAN.create_shader(TRIANGLE_VERTEX_SHADER_SPIRV);
-    pub static ref FRAGMENT_SHADER: vk::ShaderModule = VULKAN.create_shader(TRIANGLE_FRAGMENT_SHADER_SPIRV);
+    pub static ref VERTEX_SHADER: vk::ShaderModule =
+        VULKAN.create_shader(TRIANGLE_VERTEX_SHADER_SPIRV);
+    pub static ref FRAGMENT_SHADER: vk::ShaderModule =
+        VULKAN.create_shader(TRIANGLE_FRAGMENT_SHADER_SPIRV);
     pub static ref PIPELINE_LAYOUT: vk::PipelineLayout = {
         let push_constants = [vk::PushConstantRange {
             offset: 0,
@@ -40,7 +44,8 @@ lazy_static! {
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
-        let create_info = vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants);
+        let create_info =
+            vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants);
         VULKAN.create_pipeline_layout(&create_info)
     };
 }
@@ -52,11 +57,12 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    pub const BINDING_DESCRIPTION: vk::VertexInputBindingDescription = vk::VertexInputBindingDescription {
-        binding: 0,
-        stride: std::mem::size_of::<Vertex>() as u32,
-        input_rate: vk::VertexInputRate::VERTEX,
-    };
+    pub const BINDING_DESCRIPTION: vk::VertexInputBindingDescription =
+        vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<Vertex>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
+        };
 
     pub const ATTRIBUTE_DESCRIPTION: [vk::VertexInputAttributeDescription; 2] = [
         vk::VertexInputAttributeDescription {
@@ -262,7 +268,8 @@ pub fn create_pipeline(layout: vk::PipelineLayout, render_pass: vk::RenderPass) 
 
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
 
-    let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
+    let dynamic_state =
+        vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
 
     let create_info = vk::GraphicsPipelineCreateInfo::builder()
         .stages(&shader_stages)

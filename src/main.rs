@@ -41,7 +41,10 @@ fn run(_cli_options: &CliOptions) {
 pub fn spawn_window(title: &str) {
     let mut context = RendererWindow::new();
     let mut renderer = gfx::Executor::new();
-    let mut window_size = PhysicalSize { width: 0, height: 0 };
+    let mut window_size = PhysicalSize {
+        width: 0,
+        height: 0,
+    };
 
     sys::window(title.to_owned(), |control, event| {
         match event {
