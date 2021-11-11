@@ -1,6 +1,6 @@
 mod array_vec;
-mod data_store;
 mod gfx;
+mod item_storage;
 mod sys;
 mod ui;
 
