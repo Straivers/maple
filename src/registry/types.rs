@@ -1,3 +1,5 @@
+use std::any::Any;
+
 pub const ALLOCATIONS_NOT_FREED: &str =
     "All allocations must be freed before destroying the registry.";
 
@@ -19,33 +21,21 @@ pub enum Type {
     Unknown   = 0,
 
     // 128-bit types
-    Any       = 1,
-    HeapStr   = 2, // Box<str>
-    StaticStr = 3, // &'static str
-    U128      = 4,
-    I128      = 5,
+    U128      = 1,
+    I128      = 2,
+    Any       = 3, // Box<dyn Any>
+    StaticStr = 4, // &'static str
 
     // 64-bit types
-    VoidPtr   = 11,
-    U64       = 12,
-    I64       = 13,
-    F64       = 14,
+    U64       = 11,
+    I64       = 12,
+    F64       = 13,
 
     // 32-bit types
-    Char      = 21,
-    U32       = 22,
-    I32       = 23,
-    F32       = 24,
-
-    // 16-bit types
-    U16       = 31,
-    I16       = 32,
-    F16       = 33,
-
-    // 8-bit types
-    I8        = 41,
-    U8        = 42,
-    Bool      = 43,
+    U32       = 21,
+    I32       = 22,
+    F32       = 23,
+    Char      = 24,
 }
 
 pub trait RegistryObject {
@@ -53,7 +43,7 @@ pub trait RegistryObject {
 }
 
 macro_rules! impl_registry_object {
-    ($t:ident, $value:expr) => {
+    ($t:ty, $value:expr) => {
         impl RegistryObject for $t {
             const TYPE: Type = $value;
         }
@@ -62,8 +52,15 @@ macro_rules! impl_registry_object {
 
 impl_registry_object!(u128, Type::U128);
 impl_registry_object!(i128, Type::I128);
+impl_registry_object!(&'static str, Type::StaticStr);
+impl_registry_object!(Box<dyn Any>, Type::Any);
 impl_registry_object!(u64, Type::U64);
 impl_registry_object!(i64, Type::I64);
+impl_registry_object!(f64, Type::F64);
+impl_registry_object!(u32, Type::U32);
+impl_registry_object!(i32, Type::I32);
+impl_registry_object!(f32, Type::F32);
+impl_registry_object!(char, Type::Char);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SlotIndex(pub u16);
@@ -73,12 +70,3 @@ pub struct ObjectIndex(pub u16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub u16);
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn type_size() {
-        assert_eq!(std::mem::size_of::<Box<str>>(), 16);
-        assert_eq!(std::mem::size_of::<&'static str>(), 16);
-    }
-}

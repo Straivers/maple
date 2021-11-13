@@ -1,19 +1,28 @@
-use std::slice::SliceIndex;
-
 use super::types::*;
+use std::{any::Any, mem::ManuallyDrop};
 
 pub union Object128 {
     pub u128: u128,
     pub i128: i128,
+    pub static_str: &'static str,
+    pub any: ManuallyDrop<Box<dyn Any>>,
 }
 
 pub union Object64 {
     pub u64: u64,
     pub i64: i64,
+    pub f64: f64,
+}
+
+pub union Object32 {
+    pub char: char,
+    pub u32: u32,
+    pub i32: i32,
+    pub f32: f32,
 }
 
 union Object<T> {
-    object: std::mem::ManuallyDrop<T>,
+    object: ManuallyDrop<T>,
     next_free: Option<ObjectIndex>,
 }
 
@@ -63,13 +72,13 @@ impl<T> Storage<T> {
             let object = &mut self.values[index.0 as usize];
             unsafe {
                 self.free_list = object.next_free;
-                object.object = std::mem::ManuallyDrop::new(value);
+                object.object = ManuallyDrop::new(value);
             }
             self.num_free_objects -= 1;
             Some(index)
         } else if let Ok(index) = self.values.len().try_into() {
             self.values.push(Object::<T> {
-                object: std::mem::ManuallyDrop::new(value),
+                object: ManuallyDrop::new(value),
             });
             Some(ObjectIndex(index))
         } else {
