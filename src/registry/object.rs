@@ -2,6 +2,16 @@ use std::slice::SliceIndex;
 
 use super::types::*;
 
+pub union Object128 {
+    pub u128: u128,
+    pub i128: i128,
+}
+
+pub union Object64 {
+    pub u64: u64,
+    pub i64: i64,
+}
+
 union Object<T> {
     object: std::mem::ManuallyDrop<T>,
     next_free: Option<ObjectIndex>,
@@ -41,7 +51,7 @@ impl<T> Storage<T> {
     }
 
     /// # Safety
-    /// 
+    ///
     /// Make sure that `index` points to a live object. Pointing to an
     /// freed object produces undefined garbage.
     pub unsafe fn get(&self, index: ObjectIndex) -> &T {
@@ -68,25 +78,21 @@ impl<T> Storage<T> {
     }
 
     /// # Safety
-    /// 
+    ///
     /// 1. The object must not have been previously deleted.
-    pub unsafe fn delete(
-        &mut self,
-        index: ObjectIndex,
-        destructor: &mut dyn FnMut(&mut T),
-    ) {
+    pub unsafe fn delete(&mut self, index: ObjectIndex, mut destructor: impl FnMut(&mut T)) {
+        let is_last = index.0 as usize + 1 == self.values.len();
         if let Some(object) = self.values.get_mut(index.0 as usize) {
             (destructor)(&mut object.object);
-            object.next_free = self.free_list;
-            self.free_list = Some(index);
-            self.num_free_objects += 1;
-        }
-    }
-}
 
-impl <T> Drop for Storage<T> {
-    fn drop(&mut self) {
-        assert_eq!(self.num_free_objects, self.values.len(), "Storage must not have any allocated objects when being dropped!");
+            if !is_last {
+                object.next_free = self.free_list;
+                self.free_list = Some(index);
+                self.num_free_objects += 1;
+            } else {
+                self.values.truncate(self.values.len() - 1);
+            }
+        }
     }
 }
 
@@ -109,19 +115,21 @@ mod tests {
             assert_eq!(*storage.get(i3), 3);
             let i4 = storage.store(4u128).unwrap();
             assert_eq!(*storage.get(i4), 4);
-    
-            storage.delete(i1, &mut |_| {});
-    
+
+            storage.delete(i1, |_| {});
+
             let i5 = storage.store(5u128).unwrap();
             assert_eq!(i5, i1);
             assert_eq!(*storage.get(i5), 5);
 
-            storage.delete(i0, &mut |_| {});
-            // i1 was previously deleted to make room for i5
-            storage.delete(i2, &mut |_| {});
-            storage.delete(i3, &mut |_| {});
-            storage.delete(i4, &mut |_| {});
-            storage.delete(i5, &mut |_| {});
+            // delete high-to-low
+            storage.delete(i4, |_| {});
+            storage.delete(i3, |_| {});
+            storage.delete(i2, |_| {});
+            storage.delete(i5, |_| {});
+            storage.delete(i0, |_| {});
+
+            assert_eq!(storage.values.len(), 0);
         }
     }
 }

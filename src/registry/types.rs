@@ -1,3 +1,6 @@
+pub const ALLOCATIONS_NOT_FREED: &str =
+    "All allocations must be freed before destroying the registry.";
+
 /// A unique identifier associated with an item stored in a [`ItemStorage`]
 /// object.
 #[repr(align(4))]
@@ -44,6 +47,23 @@ pub enum Type {
     U8        = 42,
     Bool      = 43,
 }
+
+pub trait RegistryObject {
+    const TYPE: Type;
+}
+
+macro_rules! impl_registry_object {
+    ($t:ident, $value:expr) => {
+        impl RegistryObject for $t {
+            const TYPE: Type = $value;
+        }
+    };
+}
+
+impl_registry_object!(u128, Type::U128);
+impl_registry_object!(i128, Type::I128);
+impl_registry_object!(u64, Type::U64);
+impl_registry_object!(i64, Type::I64);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SlotIndex(pub u16);
