@@ -1,5 +1,10 @@
 #![allow(dead_code)]
 
+use crate::{
+    gfx::{Color, Rect, Vertex},
+    traits::{CountingOutputIter, OutputIter},
+};
+
 /*
 Desired API (2021-11-06):
 
@@ -24,33 +29,79 @@ ui.build(&mut data, |ui: UiBuilder| {
 });
 */
 
-pub struct AppData {}
+/*
+v1: Panel, click to change color
+*/
 
-/// The [`AppDataTracker`] wraps [`AppData`] in order to keep track of which panel
-/// accesses which data items. This is used in conjunction with input state to
-/// determine if a panel needs to be updated.
-pub struct AppDataTracker {}
+pub struct Context {}
 
-pub struct MapleUi {}
-
-impl MapleUi {
-    pub fn panel(&mut self, panel_control: &dyn Fn(&mut Panel)) {}
+impl Context {
+    pub fn new() -> Self {
+        Self {}
+    }
 }
 
-pub struct Panel {}
+pub struct Builder<'a> {
+    context: &'a Context,
+    window_rect: Rect,
+    panels: Vec<Panel>,
+    vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
+    index_buffer: &'a mut dyn OutputIter<u16>,
+}
+
+impl<'a> Builder<'a> {
+    pub fn new(
+        context: &'a Context,
+        window_rect: Rect,
+        vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
+        index_buffer: &'a mut dyn OutputIter<u16>,
+    ) -> Self {
+        Self {
+            context,
+            window_rect,
+            vertex_buffer,
+            index_buffer,
+            panels: vec![],
+        }
+    }
+
+    pub fn panel(&mut self, panel: Panel) {
+        self.panels.push(panel);
+    }
+
+    pub fn build(self) {
+        for panel in &self.panels {
+            panel.write_buffers(self.vertex_buffer, self.index_buffer);
+        }
+    }
+}
+
+pub struct Panel {
+    pub rect: Rect,
+    pub color: Color,
+}
 
 impl Panel {
-    pub fn data(&self) -> &AppDataTracker {
-        todo!()
-    }
+    pub fn write_buffers(
+        &self,
+        vertices: &mut dyn CountingOutputIter<Vertex>,
+        indices: &mut dyn OutputIter<u16>,
+    ) {
+        let points = self.rect.points();
+        let start = vertices.len() as u16;
 
-    pub fn data_mut(&mut self) -> &mut AppDataTracker {
-        todo!()
-    }
+        for point in &points {
+            vertices.push(Vertex {
+                position: *point,
+                color: self.color,
+            })
+        }
 
-    pub fn text(&mut self, text: &str) {}
-
-    pub fn button(&mut self, label: &str) -> bool {
-        false
+        indices.push(start + 0);
+        indices.push(start + 1);
+        indices.push(start + 2);
+        indices.push(start + 0);
+        indices.push(start + 2);
+        indices.push(start + 3);
     }
 }

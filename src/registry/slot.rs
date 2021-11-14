@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[repr(align(4))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Id {

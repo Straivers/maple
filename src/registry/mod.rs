@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod object;
 mod slot;
 
@@ -111,7 +113,7 @@ impl Registry {
     /// Removes the value referred to by `id`.
     pub fn remove(&mut self, id: Id) -> Result<(), Error> {
         use Type::*;
-        
+
         let (object_type, object_index) = self.slots.free(id).ok_or(Error::InvalidId)?;
         match object_type {
             U128 | I128 | StaticStr => unsafe { self.objects_128.delete(object_index, |_| {}) },
