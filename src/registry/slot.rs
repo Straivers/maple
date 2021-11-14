@@ -1,30 +1,36 @@
-use super::types::*;
+#[repr(align(4))]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Id {
+    index: Index,
+    version: Version,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Version(pub u16);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Index(pub u16);
 
 #[derive(Debug)]
-struct Slot {
+struct Slot<T: Copy> {
     version: Version,
-    payload: Payload,
+    payload: Payload<T>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Payload {
-    Active {
-        item_type: Type,
-        value_index: ObjectIndex,
-    },
-    Free {
-        next_free: Option<SlotIndex>,
-    },
+enum Payload<T: Copy> {
+    Active(T),
+    Free { next_free: Option<Index> },
     Dead,
 }
 
-pub struct Storage {
-    slots: Vec<Slot>,
-    freelist_head: Option<SlotIndex>,
+pub struct Storage<T: Copy> {
+    slots: Vec<Slot<T>>,
+    freelist_head: Option<Index>,
     num_allocated: usize,
 }
 
-impl Storage {
+impl<T: Copy> Storage<T> {
     /// Initializes a new [`SlotStorage`] object.
     pub fn new() -> Self {
         Self {
@@ -32,7 +38,7 @@ impl Storage {
                 version: Version(1),
                 payload: Payload::Free { next_free: None },
             }],
-            freelist_head: Some(SlotIndex(0)),
+            freelist_head: Some(Index(0)),
             num_allocated: 0,
         }
     }
@@ -40,15 +46,11 @@ impl Storage {
     /// Retrieves the [`ItemType`] and [`Index`] associated with `id`. If the
     /// `id` is invalid or the resource it pointed to was destroyed, this
     /// function will return `None`.
-    pub fn get(&self, id: Id) -> Option<(Type, ObjectIndex)> {
-        self.slots.get(id.index.0 as usize).map_or(None, |slot| {
-            if let Payload::Active {
-                item_type,
-                value_index,
-            } = &slot.payload
-            {
+    pub fn get(&self, id: Id) -> Option<T> {
+        self.slots.get(id.index.0 as usize).and_then(|slot| {
+            if let Payload::Active(data) = &slot.payload {
                 if slot.version == id.version {
-                    return Some((*item_type, *value_index));
+                    return Some(*data);
                 }
             }
             None
@@ -67,16 +69,13 @@ impl Storage {
     /// Allocates a slot to store `item_type` and `value_index`, returning an
     /// [`ItemId`] on success. The `item_type` and `value_index` cannot be
     /// modified except to be freed.
-    pub fn alloc(&mut self, item_type: Type, value_index: ObjectIndex) -> Option<Id> {
+    pub fn alloc(&mut self, data: T) -> Option<Id> {
         if let Some(index) = self.freelist_head {
             let slot = unsafe { self.slots.get_unchecked_mut(index.0 as usize) };
             match slot.payload {
                 Payload::Free { next_free } => {
                     self.freelist_head = next_free;
-                    slot.payload = Payload::Active {
-                        item_type,
-                        value_index,
-                    };
+                    slot.payload = Payload::Active(data);
                     self.num_allocated += 1;
                     Some(Id {
                         index,
@@ -89,14 +88,11 @@ impl Storage {
             let index = self.slots.len() as u16;
             self.slots.push(Slot {
                 version: Version(0),
-                payload: Payload::Active {
-                    item_type,
-                    value_index,
-                },
+                payload: Payload::Active(data),
             });
             self.num_allocated += 1;
             Some(Id {
-                index: SlotIndex(index),
+                index: Index(index),
                 version: Version(0),
             })
         } else {
@@ -105,17 +101,14 @@ impl Storage {
     }
 
     /// Returns a slot to the [`SlotStorage`] identified by `id`.
-    pub fn free(&mut self, id: Id) -> (Type, ObjectIndex) {
+    pub fn free(&mut self, id: Id) -> Option<T> {
         if let Some(slot) = self.slots.get_mut(id.index.0 as usize) {
             if id.version != slot.version {
-                panic!("Attempted to free slot {:?} twice.", id);
+                return None;
             }
 
             match slot.payload {
-                Payload::Active {
-                    item_type,
-                    value_index,
-                } => {
+                Payload::Active(data) => {
                     if slot.version.0 < u16::MAX {
                         slot.version = Version(slot.version.0 + 1);
                         slot.payload = Payload::Free {
@@ -127,13 +120,13 @@ impl Storage {
                         slot.payload = Payload::Dead;
                     }
 
-                    return (item_type, value_index);
+                    return Some(data);
                 }
-                _ => unreachable!(),
+                _ => return None,
             }
         }
 
-        panic!("Attempted to free unallocated slot {:?}", id);
+        None
     }
 }
 
@@ -153,11 +146,6 @@ mod tests {
             4,
             "ItemId is not aligned to 4 bytes!"
         );
-        assert_eq!(
-            std::mem::size_of::<Payload>(),
-            6,
-            "SlotPayload is not the expected 6 bytes!"
-        );
     }
 
     #[test]
@@ -165,20 +153,20 @@ mod tests {
         let mut slots = {
             let init = Storage::new();
             assert_eq!(init.slots.len(), 1);
-            assert_eq!(init.freelist_head, Some(SlotIndex(0)));
+            assert_eq!(init.freelist_head, Some(Index(0)));
             init
         };
         {
-            let slot1 = slots.alloc(Type::Unknown, ObjectIndex(0)).unwrap();
+            let slot1 = slots.alloc(10).unwrap();
             assert_eq!(slots.is_valid(slot1), true);
             assert_eq!(
                 slot1,
                 Id {
-                    index: SlotIndex(0),
+                    index: Index(0),
                     version: Version(1)
                 }
             );
-            assert_eq!(slots.get(slot1), Some((Type::Unknown, ObjectIndex(0))));
+            assert_eq!(slots.get(slot1), Some(10));
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.freelist_head, None);
 
@@ -186,12 +174,12 @@ mod tests {
             assert_eq!(slots.is_valid(slot1), false);
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.slots[0].payload, Payload::Free { next_free: None });
-            assert_eq!(slots.freelist_head, Some(SlotIndex(0)));
+            assert_eq!(slots.freelist_head, Some(Index(0)));
 
-            let slot2 = slots.alloc(Type::Unknown, ObjectIndex(100)).unwrap();
+            let slot2 = slots.alloc(11).unwrap();
             assert_eq!(slots.is_valid(slot2), true);
             assert_eq!(slots.get(slot1), None);
-            assert_eq!(slots.get(slot2), Some((Type::Unknown, ObjectIndex(100))));
+            assert_eq!(slots.get(slot2), Some(11));
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.freelist_head, None);
 
@@ -206,14 +194,14 @@ mod tests {
         // Set up slots[0] to be near 2 allocations away from retirement.
         slots.slots[0].version = Version(u16::MAX - 1);
 
-        let slot1 = slots.alloc(Type::Unknown, ObjectIndex(1)).unwrap();
+        let slot1 = slots.alloc(1).unwrap();
         assert_eq!(slots.slots[0].version, Version(u16::MAX - 1));
         slots.free(slot1);
         assert_eq!(slots.slots[0].version, Version(u16::MAX));
         assert!(slots.freelist_head.is_some());
 
         // Test that we can allocate a saturated node.
-        let slot2 = slots.alloc(Type::Unknown, ObjectIndex(3)).unwrap();
+        let slot2 = slots.alloc(2).unwrap();
         assert_eq!(slots.slots[0].version, Version(u16::MAX));
         slots.free(slot2);
         assert_eq!(slots.slots[0].version, Version(u16::MAX)); // No change expected here

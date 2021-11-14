@@ -1,30 +1,12 @@
-use super::types::*;
-use std::{any::Any, mem::ManuallyDrop};
-
-pub union Object128 {
-    pub u128: u128,
-    pub i128: i128,
-    pub static_str: &'static str,
-    pub any: ManuallyDrop<Box<dyn Any>>,
-}
-
-pub union Object64 {
-    pub u64: u64,
-    pub i64: i64,
-    pub f64: f64,
-}
-
-pub union Object32 {
-    pub char: char,
-    pub u32: u32,
-    pub i32: i32,
-    pub f32: f32,
-}
+use std::mem::ManuallyDrop;
 
 union Object<T> {
     object: ManuallyDrop<T>,
-    next_free: Option<ObjectIndex>,
+    next_free: Option<Index>,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Index(pub u16);
 
 /// Stores objects in a flat array addressed by [`ObjectIndex`]es. Freed objects
 /// are placed on a free list and made available for future allocations. In
@@ -46,7 +28,7 @@ union Object<T> {
 /// - All objects must be deleted before the storage object can be dropped!
 pub struct Storage<T> {
     values: Vec<Object<T>>,
-    free_list: Option<ObjectIndex>,
+    free_list: Option<Index>,
     num_free_objects: usize,
 }
 
@@ -63,11 +45,19 @@ impl<T> Storage<T> {
     ///
     /// Make sure that `index` points to a live object. Pointing to an
     /// freed object produces undefined garbage.
-    pub unsafe fn get(&self, index: ObjectIndex) -> &T {
+    pub unsafe fn get(&self, index: Index) -> &T {
         &self.values[index.0 as usize].object
     }
 
-    pub fn store(&mut self, value: T) -> Option<ObjectIndex> {
+    /// # Safety
+    ///
+    /// Make sure that `index` points to a live object. Pointing to an
+    /// freed object produces undefined garbage.
+    pub unsafe fn get_mut(&mut self, index: Index) -> &mut T {
+        &mut self.values[index.0 as usize].object
+    }
+
+    pub fn store(&mut self, value: T) -> Option<Index> {
         if let Some(index) = self.free_list {
             let object = &mut self.values[index.0 as usize];
             unsafe {
@@ -80,7 +70,7 @@ impl<T> Storage<T> {
             self.values.push(Object::<T> {
                 object: ManuallyDrop::new(value),
             });
-            Some(ObjectIndex(index))
+            Some(Index(index))
         } else {
             None
         }
@@ -89,17 +79,17 @@ impl<T> Storage<T> {
     /// # Safety
     ///
     /// 1. The object must not have been previously deleted.
-    pub unsafe fn delete(&mut self, index: ObjectIndex, mut destructor: impl FnMut(&mut T)) {
+    pub unsafe fn delete(&mut self, index: Index, mut destructor: impl FnMut(&mut T)) {
         let is_last = index.0 as usize + 1 == self.values.len();
         if let Some(object) = self.values.get_mut(index.0 as usize) {
             (destructor)(&mut object.object);
 
-            if !is_last {
+            if is_last {
+                self.values.truncate(self.values.len() - 1);
+            } else {
                 object.next_free = self.free_list;
                 self.free_list = Some(index);
                 self.num_free_objects += 1;
-            } else {
-                self.values.truncate(self.values.len() - 1);
             }
         }
     }
