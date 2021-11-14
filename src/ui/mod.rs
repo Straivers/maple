@@ -87,21 +87,18 @@ impl Panel {
         vertices: &mut dyn CountingOutputIter<Vertex>,
         indices: &mut dyn OutputIter<u16>,
     ) {
-        let points = self.rect.points();
         let start = vertices.len() as u16;
 
-        for point in &points {
+        for point in &self.rect.points() {
             vertices.push(Vertex {
                 position: *point,
                 color: self.color,
-            })
+            });
+            
         }
 
-        indices.push(start + 0);
-        indices.push(start + 1);
-        indices.push(start + 2);
-        indices.push(start + 0);
-        indices.push(start + 2);
-        indices.push(start + 3);
+        for index in &Rect::INDICES {
+            indices.push(start + index);
+        }
     }
 }

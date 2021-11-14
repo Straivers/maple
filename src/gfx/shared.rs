@@ -151,9 +151,9 @@ pub fn record_command_buffer(
 
     cmd.set_viewport(&[vk::Viewport {
         x: viewport.offset.x as f32,
-        y: viewport.offset.y as f32,
+        y: (viewport.extent.height as i32 - viewport.offset.y) as f32,
         width: viewport.extent.width as f32,
-        height: viewport.extent.height as f32,
+        height: -(viewport.extent.height as f32),
         min_depth: 0.0,
         max_depth: 0.0,
     }]);

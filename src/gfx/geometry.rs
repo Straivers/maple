@@ -29,6 +29,8 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub const INDICES: [u16; 6] = [0, 3, 2, 0, 2, 1];
+
     pub fn points(&self) -> [Point; 4] {
         [
             self.lower_left_corner,
