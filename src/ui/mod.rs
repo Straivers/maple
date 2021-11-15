@@ -63,7 +63,7 @@ impl<'a> Builder<'a> {
     pub fn new(context: &'a mut Context) -> Self {
         Self {
             context,
-            region: Region::new(Color::rgba(0, 0, 0, 0), 0.0),
+            region: Region::new(Color::rgba(0, 0, 0, 0), 0.0, LayoutDirection::LeftToRight),
         }
     }
 
@@ -89,26 +89,40 @@ impl<'a> Builder<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum LayoutDirection {
+    LeftToRight,
+    TopToBottom,
+}
+
 #[derive(Clone)]
 pub struct Region {
     color: Color,
     margin: f32,
+    layout_direction: LayoutDirection,
     children: Vec<Region>,
 }
 
 impl Region {
-    pub fn new(color: Color, margin: f32) -> Self {
+    pub fn new(color: Color, margin: f32, layout_direction: LayoutDirection) -> Self {
         Self {
             color,
             margin,
+            layout_direction,
             children: vec![],
         }
     }
 
-    pub fn with_children(color: Color, margin: f32, children: &[Region]) -> Self {
+    pub fn with_children(
+        color: Color,
+        margin: f32,
+        layout_direction: LayoutDirection,
+        children: &[Region],
+    ) -> Self {
         Self {
             color,
             margin,
+            layout_direction,
             children: children.to_vec(),
         }
     }
@@ -126,20 +140,40 @@ impl Region {
         Self::write_rect(bounds, self.color, vertex_buffer, index_buffer);
 
         if !self.children.is_empty() {
-            let total_margin_width = self.margin * (self.children.len() + 1) as f32;
-            let per_box_width = (bounds.width() - total_margin_width) / self.children.len() as f32;
+            match self.layout_direction {
+                LayoutDirection::LeftToRight => {
+                    let total_margin_width = self.margin * (self.children.len() + 1) as f32;
+                    let per_box_width = (bounds.width() - total_margin_width) / self.children.len() as f32;
+        
+                    let mut increasing_x = bounds.x() + self.margin;
+        
+                    let y = bounds.y() + self.margin;
+                    let height = bounds.height() - 2.0 * self.margin;
+        
+                    assert!(height > 0.0);
+        
+                    for child in &self.children {
+                        let child_bounds = Rect::new(increasing_x, y, per_box_width, height);
+                        child.write_buffers(child_bounds, vertex_buffer, index_buffer);
+                        increasing_x += per_box_width + self.margin;
+                    }
+                },
+                LayoutDirection::TopToBottom => {
+                    let total_margin_height = self.margin * (self.children.len() + 1) as f32;
+                    let per_box_height = (bounds.height() - total_margin_height) / self.children.len() as f32;
 
-            let mut advancing_x = bounds.x() + self.margin;
+                    // going bottom-up
+                    let mut increasing_y = bounds.y() + self.margin;
 
-            let y = bounds.y() + self.margin;
-            let height = bounds.height() - 2.0 * self.margin;
+                    let x = bounds.x() + self.margin;
+                    let width = bounds.width() - 2.0 * self.margin;
 
-            assert!(height > 0.0);
-
-            for child in &self.children {
-                let child_bounds = Rect::new(advancing_x, y, per_box_width, height);
-                child.write_buffers(child_bounds, vertex_buffer, index_buffer);
-                advancing_x += per_box_width + self.margin;
+                    for child in self.children.iter().rev() {
+                        let child_bounds = Rect::new(x, increasing_y, width, per_box_height);
+                        child.write_buffers(child_bounds, vertex_buffer, index_buffer);
+                        increasing_y += per_box_height + self.margin;
+                    }
+                }
             }
         }
     }

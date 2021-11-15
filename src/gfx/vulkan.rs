@@ -17,7 +17,7 @@ use ash::{
 use super::recorder::CommandRecorder;
 use crate::{
     array_vec::ArrayVec,
-    sys::{Library, Handle},
+    sys::{Handle, Library},
 };
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
