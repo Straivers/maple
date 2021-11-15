@@ -5,24 +5,24 @@ mod sys;
 mod traits;
 mod ui;
 
-use clap::App;
+// use clap::App;
 
-use gfx::{Color, Extent, Point, Rect, RendererWindow};
-use sys::{EventLoopControl, PhysicalSize, WindowEvent};
-use ui::Panel;
+use gfx::{Color, RendererWindow};
+use sys::{Event, EventLoopControl, PhysicalSize};
+use ui::Region;
 
-const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
-    MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
+// const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
+//     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
 
 #[derive(Debug)]
 struct CliOptions {}
 
 pub fn main() {
-    let _ = App::new("maple")
-        .version("0.1.0")
-        .version_short("v")
-        .after_help(ENVIRONMENT_VARIABLES_HELP)
-        .get_matches();
+    // let _ = App::new("maple")
+    //     .version("0.1.0")
+    //     .version_short("v")
+    //     .after_help(ENVIRONMENT_VARIABLES_HELP)
+    //     .get_matches();
 
     let options = CliOptions {};
 
@@ -38,108 +38,109 @@ pub enum WindowStatus {
 
 fn run(_cli_options: &CliOptions) {
     spawn_window("Title 1", |ui| {
-        ui.panel(Panel {
-            rect: Rect {
-                lower_left_corner: Point::new(100.0, 100.0),
-                extent: Extent::new(200.0, 300.0),
-            },
-            color: Color::rgb(100, 200, 100),
-        });
-
-        ui.panel(Panel {
-            rect: Rect {
-                lower_left_corner: Point::new(500.0, 0.0),
-                extent: Extent::new(200.0, 300.0),
-            },
-            color: Color::rgb(100, 200, 0),
-        });
+        // create a box
+        ui.region(Region::with_children(
+            Color::rgb(0, 0, 0),
+            10.0,
+            &[
+                Region::with_children(
+                    Color::rgb(200, 200, 200),
+                    20.0,
+                    &[Region::new(Color::rgb(255, 0, 0), 0.0)],
+                ),
+                Region::with_children(
+                    Color::rgb(200, 200, 200),
+                    10.0,
+                    &[
+                        Region::new(Color::rgb(0, 255, 0), 0.0),
+                        Region::new(Color::rgb(0, 0, 255), 0.0),
+                    ],
+                ),
+            ],
+        ));
     });
 }
 
 pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) {
     let mut context = RendererWindow::new();
     let mut renderer = gfx::Executor::new();
-    let mut ui = ui::Context::new();
+    let mut ui = ui::Context::default();
     let mut window_size = PhysicalSize {
         width: 0,
         height: 0,
     };
 
-    sys::window(title.to_owned(), |control, event| {
+    sys::window(title, |control, event| {
         match event {
-            WindowEvent::Created { size } => {
+            Event::Created { size } => {
                 window_size = size;
                 context.bind(control.handle(), size);
             }
-            WindowEvent::Destroyed {} => {
+            Event::Destroyed {} => {
                 return EventLoopControl::Stop;
             }
-            WindowEvent::CloseRequested {} => {
+            Event::CloseRequested {} => {
                 control.destroy();
             }
-            WindowEvent::CursorMove { x_pos: _, y_pos: _ } => {}
-            WindowEvent::MouseButton {
+            Event::CursorMove { x_pos, y_pos } => {
+                ui.update_cursor(
+                    f32::from(x_pos),
+                    f32::from(window_size.height) - f32::from(y_pos),
+                );
+            }
+            Event::MouseButton {
                 button: _,
                 state: _,
-            } => {}
-            WindowEvent::DoubleClick { button: _ } => {}
-            WindowEvent::ScrollWheel {
+            } => {
+                // ui.input_click(button, state);
+            }
+            Event::DoubleClick { button: _ } => {
+                // ui.input_db_click(button);
+            }
+            Event::ScrollWheel {
                 scroll_x: _,
                 scroll_y: _,
-            } => {}
-            WindowEvent::Char { codepoint: _ } => {}
-            WindowEvent::Resized { size } => {
+            } => {
+                // ui.update_scroll(scroll_x, scroll_y);
+            }
+            Event::Char { codepoint: _ } => {
+                // ui.input_codepoint(codepoint);
+            }
+            Event::Resized { size } => {
                 window_size = size;
+                ui.update_window_size(f32::from(window_size.width), f32::from(window_size.height));
 
                 if window_size != PhysicalSize::default() {
                     let mut vertices = vec![];
                     let mut indices = vec![];
 
-                    let mut builder = ui::Builder::new(
-                        &mut ui,
-                        Rect {
-                            lower_left_corner: Point::default(),
-                            extent: Extent {
-                                width: window_size.width as f32,
-                                height: window_size.height as f32,
-                            },
-                        },
-                        &mut vertices,
-                        &mut indices,
-                    );
+                    let mut builder = ui::Builder::new(&mut ui);
 
                     ui_callback(&mut builder);
-                    builder.build();
+                    builder.build(&mut vertices, &mut indices);
 
                     if let Some(request) = context.draw(window_size, &vertices, &indices) {
                         let _ = renderer.execute(&request);
                     }
+
+                    ui.advance_frame();
                 }
             }
-            WindowEvent::Update {} => {
+            Event::Update {} => {
                 if window_size != PhysicalSize::default() {
                     let mut vertices = vec![];
                     let mut indices = vec![];
 
-                    let mut builder = ui::Builder::new(
-                        &mut ui,
-                        Rect {
-                            lower_left_corner: Point::default(),
-                            extent: Extent {
-                                width: window_size.width as f32,
-                                height: window_size.height as f32,
-                            },
-                        },
-                        &mut vertices,
-                        &mut indices,
-                    );
+                    let mut builder = ui::Builder::new(&mut ui);
 
                     ui_callback(&mut builder);
-                    builder.build();
+                    builder.build(&mut vertices, &mut indices);
 
                     if let Some(request) = context.draw(window_size, &vertices, &indices) {
                         let _ = renderer.execute(&request);
                     }
+
+                    ui.advance_frame();
                 }
             }
         }

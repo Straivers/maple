@@ -112,17 +112,21 @@ impl Registry {
 
     /// Removes the value referred to by `id`.
     pub fn remove(&mut self, id: Id) -> Result<(), Error> {
-        use Type::*;
-
         let (object_type, object_index) = self.slots.free(id).ok_or(Error::InvalidId)?;
         match object_type {
-            U128 | I128 | StaticStr => unsafe { self.objects_128.delete(object_index, |_| {}) },
-            Any => unsafe {
+            Type::U128 | Type::I128 | Type::StaticStr => unsafe {
+                self.objects_128.delete(object_index, |_| {});
+            },
+            Type::Any => unsafe {
                 self.objects_128
                     .delete(object_index, |value| ManuallyDrop::drop(&mut value.any));
             },
-            U64 | I64 | F64 => unsafe { self.objects_64.delete(object_index, |_| {}) },
-            U32 | I32 | F32 | Char => unsafe { self.objects_32.delete(object_index, |_| {}) },
+            Type::U64 | Type::I64 | Type::F64 => unsafe {
+                self.objects_64.delete(object_index, |_| {});
+            },
+            Type::U32 | Type::I32 | Type::F32 | Type::Char => unsafe {
+                self.objects_32.delete(object_index, |_| {});
+            },
             _ => unimplemented!(),
         }
 

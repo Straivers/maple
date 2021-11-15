@@ -111,6 +111,7 @@ pub fn to_extent(size: PhysicalSize) -> vk::Extent2D {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn record_command_buffer(
     cmd: &CommandRecorder,
     viewport: vk::Rect2D,

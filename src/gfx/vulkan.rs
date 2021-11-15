@@ -17,7 +17,7 @@ use ash::{
 use super::recorder::CommandRecorder;
 use crate::{
     array_vec::ArrayVec,
-    sys::{Library, WindowHandle},
+    sys::{Library, Handle},
 };
 
 const MAX_PHYSICAL_DEVICES: usize = 16;
@@ -245,7 +245,7 @@ impl Vulkan {
         \/   |_|\_\_____/ \__,_|_|  |_| \__,_|\___\___|_|\_\_|  |_|_|  \_\
     */
 
-    pub fn create_surface(&self, window_handle: &WindowHandle) -> vk::SurfaceKHR {
+    pub fn create_surface(&self, window_handle: &Handle) -> vk::SurfaceKHR {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
             .hwnd(window_handle.hwnd.0 as _)
             .hinstance(window_handle.hinstance.0 as _);
@@ -372,6 +372,7 @@ impl Vulkan {
             create_info.p_queue_family_indices = queue_family_indices.as_ptr();
         }
 
+        #[allow(clippy::or_fun_call)]
         let old_swapchain = old.unwrap_or(vk::SwapchainKHR::null());
         create_info.old_swapchain = old_swapchain;
 
@@ -451,7 +452,7 @@ impl Vulkan {
     pub fn present(&self, present_info: &vk::PresentInfoKHR) {
         unsafe {
             self.swapchain_api
-                .queue_present(self.present_queue, &present_info)
+                .queue_present(self.present_queue, present_info)
                 .expect("Out of memory");
         }
     }

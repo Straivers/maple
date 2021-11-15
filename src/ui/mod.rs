@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{
-    gfx::{Color, Rect, Vertex},
+    gfx::{Color, Extent, Point, Rect, Vertex},
     traits::{CountingOutputIter, OutputIter},
 };
 
@@ -33,72 +33,134 @@ ui.build(&mut data, |ui: UiBuilder| {
 v1: Panel, click to change color
 */
 
-pub struct Context {}
+#[derive(Default)]
+pub struct Context {
+    cursor: Point,
+    window_size: Extent,
+    prev_cursor: Point,
+}
 
 impl Context {
-    pub fn new() -> Self {
-        Self {}
+    pub fn advance_frame(&mut self) {
+        self.prev_cursor = self.cursor;
+    }
+
+    pub fn update_cursor(&mut self, x: f32, y: f32) {
+        self.cursor = Point::new(x, y);
+    }
+
+    pub fn update_window_size(&mut self, width: f32, height: f32) {
+        self.window_size = Extent::new(width, height);
     }
 }
 
 pub struct Builder<'a> {
-    context: &'a Context,
-    window_rect: Rect,
-    panels: Vec<Panel>,
-    vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
-    index_buffer: &'a mut dyn OutputIter<u16>,
+    context: &'a mut Context,
+    region: Region,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(
-        context: &'a Context,
-        window_rect: Rect,
-        vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
-        index_buffer: &'a mut dyn OutputIter<u16>,
-    ) -> Self {
+    pub fn new(context: &'a mut Context) -> Self {
         Self {
             context,
-            window_rect,
-            vertex_buffer,
-            index_buffer,
-            panels: vec![],
+            region: Region::new(Color::rgba(0, 0, 0, 0), 0.0),
         }
     }
 
-    pub fn panel(&mut self, panel: Panel) {
-        self.panels.push(panel);
+    pub fn cursor(&self) -> Point {
+        self.context.cursor
     }
 
-    pub fn build(self) {
-        for panel in &self.panels {
-            panel.write_buffers(self.vertex_buffer, self.index_buffer);
+    pub fn region(&mut self, region: Region) {
+        self.region.push(region);
+    }
+
+    pub fn build(
+        self,
+        vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
+        index_buffer: &'a mut dyn OutputIter<u16>,
+    ) {
+        let bounds = Rect {
+            lower_left_corner: Point::default(),
+            extent: self.context.window_size,
+        };
+        self.region
+            .write_buffers(bounds, vertex_buffer, index_buffer);
+    }
+}
+
+#[derive(Clone)]
+pub struct Region {
+    color: Color,
+    margin: f32,
+    children: Vec<Region>,
+}
+
+impl Region {
+    pub fn new(color: Color, margin: f32) -> Self {
+        Self {
+            color,
+            margin,
+            children: vec![],
         }
     }
-}
 
-pub struct Panel {
-    pub rect: Rect,
-    pub color: Color,
-}
+    pub fn with_children(color: Color, margin: f32, children: &[Region]) -> Self {
+        Self {
+            color,
+            margin,
+            children: children.to_vec(),
+        }
+    }
 
-impl Panel {
+    pub fn push(&mut self, region: Region) {
+        self.children.push(region);
+    }
+
     pub fn write_buffers(
         &self,
-        vertices: &mut dyn CountingOutputIter<Vertex>,
-        indices: &mut dyn OutputIter<u16>,
+        bounds: Rect,
+        vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
+        index_buffer: &mut dyn OutputIter<u16>,
     ) {
-        let start = vertices.len() as u16;
+        Self::write_rect(bounds, self.color, vertex_buffer, index_buffer);
 
-        for point in &self.rect.points() {
-            vertices.push(Vertex {
+        if !self.children.is_empty() {
+            let total_margin_width = self.margin * (self.children.len() + 1) as f32;
+            let per_box_width = (bounds.width() - total_margin_width) / self.children.len() as f32;
+
+            let mut advancing_x = bounds.x() + self.margin;
+
+            let y = bounds.y() + self.margin;
+            let height = bounds.height() - 2.0 * self.margin;
+
+            assert!(height > 0.0);
+
+            for child in &self.children {
+                let child_bounds = Rect::new(advancing_x, y, per_box_width, height);
+                child.write_buffers(child_bounds, vertex_buffer, index_buffer);
+                advancing_x += per_box_width + self.margin;
+            }
+        }
+    }
+
+    fn write_rect(
+        rect: Rect,
+        color: Color,
+        vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
+        index_buffer: &mut dyn OutputIter<u16>,
+    ) {
+        let start = vertex_buffer.len() as u16;
+
+        for point in &rect.points() {
+            vertex_buffer.push(Vertex {
                 position: *point,
-                color: self.color,
+                color,
             });
-            
         }
 
         for index in &Rect::INDICES {
-            indices.push(start + index);
+            index_buffer.push(start + index);
         }
     }
 }

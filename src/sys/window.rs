@@ -30,17 +30,17 @@ static REGISTER_CLASS: Once = Once::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg(target_os = "windows")]
-pub struct WindowHandle {
+pub struct Handle {
     pub hwnd: HWND,
     pub hinstance: HINSTANCE,
 }
 
-pub struct WindowControl {
-    handle: WindowHandle,
+pub struct Control {
+    handle: Handle,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum WindowEvent {
+pub enum Event {
     Created {
         size: PhysicalSize,
     },
@@ -70,14 +70,14 @@ pub enum WindowEvent {
     },
 }
 
-impl WindowControl {
+impl Control {
     pub fn destroy(&self) {
         unsafe {
             DestroyWindow(self.handle.hwnd);
         }
     }
 
-    pub fn handle(&self) -> &WindowHandle {
+    pub fn handle(&self) -> &Handle {
         &self.handle
     }
 }
@@ -88,9 +88,9 @@ pub enum EventLoopControl {
     Stop,
 }
 
-pub fn window<Callback>(title: String, callback: Callback)
+pub fn window<Callback>(title: &str, callback: Callback)
 where
-    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
+    Callback: FnMut(&Control, Event) -> EventLoopControl,
 {
     let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
@@ -134,8 +134,8 @@ where
 
     let mut window = Window {
         callback,
-        control: WindowControl {
-            handle: WindowHandle { hwnd, hinstance },
+        control: Control {
+            handle: Handle { hwnd, hinstance },
         },
         high_surrogate: 0,
     };
@@ -150,7 +150,7 @@ where
         let height = (rect.bottom - rect.top)
             .try_into()
             .expect("Window heigth is negative or > 65535");
-        window.dispatch(WindowEvent::Created {
+        window.dispatch(Event::Created {
             size: PhysicalSize { width, height },
         });
     }
@@ -193,22 +193,22 @@ where
 
 struct Window<Callback>
 where
-    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
+    Callback: FnMut(&Control, Event) -> EventLoopControl,
 {
     callback: Callback,
-    control: WindowControl,
+    control: Control,
     high_surrogate: u16,
 }
 
 impl<Callback> WindowT for Window<Callback>
 where
-    Callback: FnMut(&WindowControl, WindowEvent) -> EventLoopControl,
+    Callback: FnMut(&Control, Event) -> EventLoopControl,
 {
-    fn handle(&self) -> WindowHandle {
+    fn handle(&self) -> Handle {
         self.control.handle
     }
 
-    fn dispatch(&mut self, event: WindowEvent) {
+    fn dispatch(&mut self, event: Event) {
         let op = (self.callback)(&self.control, event);
 
         if op == EventLoopControl::Stop {
@@ -226,9 +226,9 @@ where
 }
 
 trait WindowT {
-    fn handle(&self) -> WindowHandle;
+    fn handle(&self) -> Handle;
 
-    fn dispatch(&mut self, event: WindowEvent);
+    fn dispatch(&mut self, event: Event);
 
     fn save_high_surrogate(&mut self, value: u16);
 
@@ -261,15 +261,15 @@ unsafe extern "system" fn wndproc_trampoline(
                     .cy
                     .try_into()
                     .expect("Window height out of bounds!");
-                window.dispatch(WindowEvent::Created {
+                window.dispatch(Event::Created {
                     size: PhysicalSize { width, height },
                 });
             }
             WM_CLOSE => {
-                window.dispatch(WindowEvent::CloseRequested {});
+                window.dispatch(Event::CloseRequested {});
             }
             WM_DESTROY => {
-                window.dispatch(WindowEvent::Destroyed {});
+                window.dispatch(Event::Destroyed {});
             }
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
@@ -280,7 +280,7 @@ unsafe extern "system" fn wndproc_trampoline(
                     .try_into()
                     .expect("Window height is negative or > 65535");
 
-                window.dispatch(WindowEvent::Resized {
+                window.dispatch(Event::Resized {
                     size: PhysicalSize { width, height },
                 });
             }
@@ -290,48 +290,48 @@ unsafe extern "system" fn wndproc_trampoline(
                 */
                 return LRESULT(1);
             }
-            WM_MOUSEMOVE => window.dispatch(WindowEvent::CursorMove {
+            WM_MOUSEMOVE => window.dispatch(Event::CursorMove {
                 x_pos: lparam.0 as i16,
                 y_pos: (lparam.0 >> 16) as i16,
             }),
-            WM_LBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+            WM_LBUTTONDOWN => window.dispatch(Event::MouseButton {
                 button: MouseButton::Left,
                 state: ButtonState::Pressed,
             }),
-            WM_LBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+            WM_LBUTTONUP => window.dispatch(Event::MouseButton {
                 button: MouseButton::Left,
                 state: ButtonState::Released,
             }),
-            WM_MBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+            WM_MBUTTONDOWN => window.dispatch(Event::MouseButton {
                 button: MouseButton::Middle,
                 state: ButtonState::Pressed,
             }),
-            WM_MBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+            WM_MBUTTONUP => window.dispatch(Event::MouseButton {
                 button: MouseButton::Middle,
                 state: ButtonState::Released,
             }),
-            WM_RBUTTONDOWN => window.dispatch(WindowEvent::MouseButton {
+            WM_RBUTTONDOWN => window.dispatch(Event::MouseButton {
                 button: MouseButton::Right,
                 state: ButtonState::Pressed,
             }),
-            WM_RBUTTONUP => window.dispatch(WindowEvent::MouseButton {
+            WM_RBUTTONUP => window.dispatch(Event::MouseButton {
                 button: MouseButton::Right,
                 state: ButtonState::Released,
             }),
-            WM_LBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+            WM_LBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
                 button: MouseButton::Left,
             }),
-            WM_RBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+            WM_RBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
                 button: MouseButton::Right,
             }),
-            WM_MBUTTONDBLCLK => window.dispatch(WindowEvent::DoubleClick {
+            WM_MBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
                 button: MouseButton::Middle,
             }),
-            WM_MOUSEWHEEL => window.dispatch(WindowEvent::ScrollWheel {
+            WM_MOUSEWHEEL => window.dispatch(Event::ScrollWheel {
                 scroll_x: 0.0,
                 scroll_y: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
             }),
-            WM_MOUSEHWHEEL => window.dispatch(WindowEvent::ScrollWheel {
+            WM_MOUSEHWHEEL => window.dispatch(Event::ScrollWheel {
                 scroll_x: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
                 scroll_y: 0.0,
             }),
@@ -348,10 +348,10 @@ unsafe extern "system" fn wndproc_trampoline(
                     })
                     .unwrap();
 
-                    window.dispatch(WindowEvent::Char { codepoint });
+                    window.dispatch(Event::Char { codepoint });
                 }
             }
-            WM_PAINT => window.dispatch(WindowEvent::Update {}),
+            WM_PAINT => window.dispatch(Event::Update {}),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 

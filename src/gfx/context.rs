@@ -1,7 +1,7 @@
 use ash::vk;
 
 use super::{shared::*, vulkan::SwapchainData};
-use crate::sys::{PhysicalSize, WindowHandle};
+use crate::sys::{Handle, PhysicalSize};
 
 pub const FRAMES_IN_FLIGHT: usize = 2;
 pub const DEFAULT_VERTEX_BUFFER_SIZE: usize = 8192;
@@ -30,7 +30,7 @@ pub struct Frame {
     buffer_size: vk::DeviceSize,
 }
 
-/// A [RenderContext] contains all render state needed for a window to
+/// A [`RenderContext`] contains all render state needed for a window to
 /// communicate with the renderer.
 #[derive(Default)]
 pub struct RendererWindow {
@@ -81,7 +81,7 @@ impl RendererWindow {
         }
     }
 
-    pub fn bind(&mut self, window: &WindowHandle, window_size: PhysicalSize) {
+    pub fn bind(&mut self, window: &Handle, window_size: PhysicalSize) {
         let extent = to_extent(window_size);
 
         self.surface = VULKAN.create_surface(window);
@@ -178,7 +178,7 @@ impl RendererWindow {
         }
 
         self.images.clear();
-        self.init_images()
+        self.init_images();
     }
 
     fn init_images(&mut self) {
@@ -266,14 +266,14 @@ impl RendererWindow {
             let data =
                 VULKAN.map_memory(frame.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty());
 
-            let buffer = std::slice::from_raw_parts_mut(data as *mut _, vertices.len());
-            buffer.copy_from_slice(vertices);
+            let vertex_buffer = std::slice::from_raw_parts_mut(data.cast(), vertices.len());
+            vertex_buffer.copy_from_slice(vertices);
 
-            let buffer = std::slice::from_raw_parts_mut(
-                data.add(vertex_buffer_size as usize) as *mut _,
+            let index_buffer = std::slice::from_raw_parts_mut(
+                data.add(vertex_buffer_size as usize).cast(),
                 indices.len(),
             );
-            buffer.copy_from_slice(indices);
+            index_buffer.copy_from_slice(indices);
 
             // PERFORMANCE(David Z): This call is unecessary if the memory is
             // host-coherent

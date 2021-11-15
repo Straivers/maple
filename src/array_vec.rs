@@ -10,51 +10,43 @@ pub struct ArrayVec<T, const N: usize> {
 
 impl<T, const N: usize> ArrayVec<T, N> {
     /// Create a new fized-capacity vector on the stack.
-    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// The number of elements in the vector.
-    #[must_use]
     pub fn len(&self) -> usize {
         self.length
     }
 
     /// Shorthand for `len() == 0`
-    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
 
     /// Returns true if the array has reached full capacity.
-    #[must_use]
     pub fn is_full(&self) -> bool {
         self.len() == self.capacity()
     }
 
     /// The statically determined capacity for the vector.
-    #[must_use]
     pub fn capacity(&self) -> usize {
         N
     }
 
     /// Retrieves a pointer to the front of the reserved buffer. Only elements
     /// `0..len()` are guaranteed to have been initialized.
-    #[must_use]
     pub fn as_ptr(&self) -> *const T {
         unsafe { (*self.array.as_ptr()).as_ptr() }
     }
 
     /// Retrieves a mutable pointer to the front of the reserved buffer. Only
     /// elements `0..len()` are guaranteed to have been initialized.
-    #[must_use]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         unsafe { (*self.array.as_mut_ptr()).as_mut_ptr() }
     }
 
     /// Produces a slice spanning the entire vector.
-    #[must_use]
     pub fn as_slice(&self) -> &[T] {
         if self.is_empty() {
             &[]
@@ -64,7 +56,6 @@ impl<T, const N: usize> ArrayVec<T, N> {
     }
 
     /// Produces a mutable slice spanning the entire vector.
-    #[must_use]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         if self.is_empty() {
             &mut []

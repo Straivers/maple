@@ -8,4 +8,4 @@ mod library;
 pub use library::Library;
 
 mod window;
-pub use window::{window, EventLoopControl, WindowControl, WindowEvent, WindowHandle};
+pub use window::{window, Control, Event, EventLoopControl, Handle};
