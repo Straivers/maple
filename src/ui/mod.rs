@@ -143,24 +143,26 @@ impl Region {
             match self.layout_direction {
                 LayoutDirection::LeftToRight => {
                     let total_margin_width = self.margin * (self.children.len() + 1) as f32;
-                    let per_box_width = (bounds.width() - total_margin_width) / self.children.len() as f32;
-        
+                    let per_box_width =
+                        (bounds.width() - total_margin_width) / self.children.len() as f32;
+
                     let mut increasing_x = bounds.x() + self.margin;
-        
+
                     let y = bounds.y() + self.margin;
                     let height = bounds.height() - 2.0 * self.margin;
-        
+
                     assert!(height > 0.0);
-        
+
                     for child in &self.children {
                         let child_bounds = Rect::new(increasing_x, y, per_box_width, height);
                         child.write_buffers(child_bounds, vertex_buffer, index_buffer);
                         increasing_x += per_box_width + self.margin;
                     }
-                },
+                }
                 LayoutDirection::TopToBottom => {
                     let total_margin_height = self.margin * (self.children.len() + 1) as f32;
-                    let per_box_height = (bounds.height() - total_margin_height) / self.children.len() as f32;
+                    let per_box_height =
+                        (bounds.height() - total_margin_height) / self.children.len() as f32;
 
                     // going bottom-up
                     let mut increasing_y = bounds.y() + self.margin;

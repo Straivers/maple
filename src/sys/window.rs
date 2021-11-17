@@ -1,4 +1,4 @@
-use std::{convert::TryInto, sync::Once};
+use std::{cell::RefCell, convert::TryInto, sync::Once};
 
 use win32::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetLastError, GetMessageW,
@@ -6,9 +6,9 @@ use win32::{
     RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS,
     CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND, IDC_ARROW, LPARAM,
     LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
-    WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
-    WM_PAINT, WM_QUIT, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
+    WM_CREATE, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT,
+    WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
     WS_OVERLAPPEDWINDOW,
 };
 
@@ -27,17 +27,6 @@ const WNDCLASS_NAME: &str = "maple_wndclass";
 pub const MAX_TITLE_LENGTH: usize = 256;
 
 static REGISTER_CLASS: Once = Once::new();
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(target_os = "windows")]
-pub struct Handle {
-    pub hwnd: HWND,
-    pub hinstance: HINSTANCE,
-}
-
-pub struct Control {
-    handle: Handle,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
@@ -70,27 +59,26 @@ pub enum Event {
     },
 }
 
-impl Control {
-    pub fn destroy(&self) {
-        unsafe {
-            DestroyWindow(self.handle.hwnd);
-        }
-    }
-
-    pub fn handle(&self) -> &Handle {
-        &self.handle
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum EventLoopControl {
     Continue,
     Stop,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(target_os = "windows")]
+pub struct Handle {
+    pub hwnd: HWND,
+    pub hinstance: HINSTANCE,
+}
+
+pub trait Control {
+    fn handle(&self) -> &Handle;
+}
+
 pub fn window<Callback>(title: &str, callback: Callback)
 where
-    Callback: FnMut(&Control, Event) -> EventLoopControl,
+    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
 {
     let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
@@ -103,7 +91,7 @@ where
         let class = WNDCLASSW {
             style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS,
             hInstance: hinstance,
-            lpfnWndProc: Some(wndproc_trampoline),
+            lpfnWndProc: Some(wndproc_trampoline::<Callback>),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
             hCursor: cursor,
             ..WNDCLASSW::default()
@@ -132,13 +120,13 @@ where
         }
     };
 
-    let mut window = Window {
+    let window = RefCell::new(Window {
         callback,
-        control: Control {
+        state: WindowState {
+            high_surrogate: 0,
             handle: Handle { hwnd, hinstance },
         },
-        high_surrogate: 0,
-    };
+    });
 
     {
         let mut rect = RECT::default();
@@ -150,24 +138,16 @@ where
         let height = (rect.bottom - rect.top)
             .try_into()
             .expect("Window heigth is negative or > 65535");
-        window.dispatch(Event::Created {
+        window.borrow_mut().dispatch(Event::Created {
             size: PhysicalSize { width, height },
         });
     }
 
-    // Is there a way to make sure both window_trait and window_trait_ptr are on
-    // the same cache line? Fat pointer
-    let mut window_trait: &mut dyn WindowT = &mut window;
-    // Pointer to fat pointer
-    let window_trait_ptr: *mut &mut dyn WindowT = &mut window_trait;
-
-    unsafe {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, window_trait_ptr as _);
-        ShowWindow(hwnd, SW_SHOW);
-    }
-
     let mut msg = MSG::default();
+
     unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, &window as *const _ as _);
+        ShowWindow(hwnd, SW_SHOW);
         loop {
             let ret = GetMessageW(&mut msg, None, 0, 0).0;
             if ret == -1 {
@@ -188,67 +168,61 @@ where
                 DispatchMessageW(&msg);
             }
         }
+
+        DestroyWindow(window.borrow().state.handle.hwnd);
+        PostQuitMessage(0);
     }
+
+    window.borrow_mut().dispatch(Event::Destroyed {});
 }
 
 struct Window<Callback>
 where
-    Callback: FnMut(&Control, Event) -> EventLoopControl,
+    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
 {
     callback: Callback,
-    control: Control,
+    state: WindowState,
+}
+
+struct WindowState {
+    handle: Handle,
     high_surrogate: u16,
 }
 
-impl<Callback> WindowT for Window<Callback>
-where
-    Callback: FnMut(&Control, Event) -> EventLoopControl,
-{
-    fn handle(&self) -> Handle {
-        self.control.handle
+impl Control for WindowState {
+    fn handle(&self) -> &Handle {
+        &self.handle
     }
+}
 
+impl<Callback> Window<Callback>
+where
+    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+{
     fn dispatch(&mut self, event: Event) {
-        let op = (self.callback)(&self.control, event);
+        let op = (self.callback)(&mut self.state, event);
 
         if op == EventLoopControl::Stop {
             unsafe { PostQuitMessage(0) };
         }
     }
-
-    fn save_high_surrogate(&mut self, value: u16) {
-        self.high_surrogate = value;
-    }
-
-    fn take_high_surrogate(&mut self) -> u16 {
-        std::mem::take(&mut self.high_surrogate)
-    }
 }
 
-trait WindowT {
-    fn handle(&self) -> Handle;
-
-    fn dispatch(&mut self, event: Event);
-
-    fn save_high_surrogate(&mut self, value: u16);
-
-    fn take_high_surrogate(&mut self) -> u16;
-}
-
-unsafe extern "system" fn wndproc_trampoline(
+unsafe extern "system" fn wndproc_trampoline<Callback>(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
-) -> LRESULT {
-    // Pointer to fat pointer
-    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut &mut dyn WindowT;
+) -> LRESULT
+where
+    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+{
+    let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<Window<Callback>>;
 
     if window_ptr.is_null() {
         DefWindowProcW(hwnd, msg, wparam, lparam)
     } else {
-        // Reference to fat pointer
-        let window = &mut *window_ptr;
+        let window = &(*window_ptr);
 
         match msg {
             WM_CREATE => {
@@ -261,16 +235,16 @@ unsafe extern "system" fn wndproc_trampoline(
                     .cy
                     .try_into()
                     .expect("Window height out of bounds!");
-                window.dispatch(Event::Created {
+                window.borrow_mut().dispatch(Event::Created {
                     size: PhysicalSize { width, height },
                 });
             }
             WM_CLOSE => {
-                window.dispatch(Event::CloseRequested {});
+                window.borrow_mut().dispatch(Event::CloseRequested {});
             }
-            WM_DESTROY => {
-                window.dispatch(Event::Destroyed {});
-            }
+            // WM_DESTROY is not handled. We send out the Event::Destroyed
+            // message once we exit the event loop instead to avoid a re-entrant
+            // call to window.borrow_mut();
             WM_SIZE => {
                 // LOWORD and HIWORD (i16s for historical reasons, I guess)
                 let width = (lparam.0 as i16)
@@ -280,7 +254,7 @@ unsafe extern "system" fn wndproc_trampoline(
                     .try_into()
                     .expect("Window height is negative or > 65535");
 
-                window.dispatch(Event::Resized {
+                window.borrow_mut().dispatch(Event::Resized {
                     size: PhysicalSize { width, height },
                 });
             }
@@ -290,57 +264,58 @@ unsafe extern "system" fn wndproc_trampoline(
                 */
                 return LRESULT(1);
             }
-            WM_MOUSEMOVE => window.dispatch(Event::CursorMove {
+            WM_MOUSEMOVE => window.borrow_mut().dispatch(Event::CursorMove {
                 x_pos: lparam.0 as i16,
                 y_pos: (lparam.0 >> 16) as i16,
             }),
-            WM_LBUTTONDOWN => window.dispatch(Event::MouseButton {
+            WM_LBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Left,
                 state: ButtonState::Pressed,
             }),
-            WM_LBUTTONUP => window.dispatch(Event::MouseButton {
+            WM_LBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Left,
                 state: ButtonState::Released,
             }),
-            WM_MBUTTONDOWN => window.dispatch(Event::MouseButton {
+            WM_MBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Middle,
                 state: ButtonState::Pressed,
             }),
-            WM_MBUTTONUP => window.dispatch(Event::MouseButton {
+            WM_MBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Middle,
                 state: ButtonState::Released,
             }),
-            WM_RBUTTONDOWN => window.dispatch(Event::MouseButton {
+            WM_RBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Right,
                 state: ButtonState::Pressed,
             }),
-            WM_RBUTTONUP => window.dispatch(Event::MouseButton {
+            WM_RBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
                 button: MouseButton::Right,
                 state: ButtonState::Released,
             }),
-            WM_LBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
+            WM_LBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
                 button: MouseButton::Left,
             }),
-            WM_RBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
+            WM_RBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
                 button: MouseButton::Right,
             }),
-            WM_MBUTTONDBLCLK => window.dispatch(Event::DoubleClick {
+            WM_MBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
                 button: MouseButton::Middle,
             }),
-            WM_MOUSEWHEEL => window.dispatch(Event::ScrollWheel {
+            WM_MOUSEWHEEL => window.borrow_mut().dispatch(Event::ScrollWheel {
                 scroll_x: 0.0,
                 scroll_y: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
             }),
-            WM_MOUSEHWHEEL => window.dispatch(Event::ScrollWheel {
+            WM_MOUSEHWHEEL => window.borrow_mut().dispatch(Event::ScrollWheel {
                 scroll_x: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
                 scroll_y: 0.0,
             }),
             WM_CHAR => {
+                let mut window_mut = window.borrow_mut();
                 if (wparam.0 & 0xD800) == 0xD800 {
-                    window.save_high_surrogate(wparam.0 as u16);
+                    window_mut.state.high_surrogate = wparam.0 as u16;
                 } else {
                     let codepoint = char::from_u32(if (wparam.0 & 0xDC00) == 0xDC00 {
-                        (((window.take_high_surrogate() as u32 - 0xD800) << 10)
+                        (((window_mut.state.high_surrogate as u32 - 0xD800) << 10)
                             | (wparam.0 as u32 - 0xDC00))
                             + 0x10000
                     } else {
@@ -348,10 +323,10 @@ unsafe extern "system" fn wndproc_trampoline(
                     })
                     .unwrap();
 
-                    window.dispatch(Event::Char { codepoint });
+                    window_mut.dispatch(Event::Char { codepoint });
                 }
             }
-            WM_PAINT => window.dispatch(Event::Update {}),
+            WM_PAINT => window.borrow_mut().dispatch(Event::Update {}),
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 

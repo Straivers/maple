@@ -19,6 +19,9 @@ embed-resource = "1.6.3"
 [build-dependencies]
 shaderc = "0.7"
 
+# [profile.release]
+# debug = true
+
 [workspace]
 members = [
     "modules/win32",

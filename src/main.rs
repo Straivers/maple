@@ -83,11 +83,9 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
                 window_size = size;
                 context.bind(control.handle(), size);
             }
-            Event::Destroyed {} => {
-                return EventLoopControl::Stop;
-            }
+            Event::Destroyed {} => {}
             Event::CloseRequested {} => {
-                control.destroy();
+                return EventLoopControl::Stop;
             }
             Event::CursorMove { x_pos, y_pos } => {
                 ui.update_cursor(
