@@ -81,6 +81,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
         match event {
             Event::Created { size } => {
                 window_size = size;
+                control.set_min_size(PhysicalSize::new(720, 480));
                 context.bind(control.handle(), size);
             }
             Event::Destroyed {} => {}

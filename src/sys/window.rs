@@ -5,11 +5,11 @@ use win32::{
     GetModuleHandleW, GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage,
     RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS,
     CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HINSTANCE, HWND, IDC_ARROW, LPARAM,
-    LRESULT, MSG, PM_REMOVE, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE,
-    WM_CREATE, WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT,
-    WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WPARAM,
-    WS_OVERLAPPEDWINDOW,
+    LRESULT, MINMAXINFO, MSG, PM_REMOVE, POINT, PWSTR, RECT, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE,
+    WM_CHAR, WM_CLOSE, WM_CREATE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_LBUTTONDBLCLK,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SIZE, WNDCLASSW, WPARAM, WS_OVERLAPPEDWINDOW,
 };
 
 use super::{
@@ -74,11 +74,15 @@ pub struct Handle {
 
 pub trait Control {
     fn handle(&self) -> &Handle;
+
+    fn min_size(&self) -> PhysicalSize;
+
+    fn set_min_size(&mut self, size: PhysicalSize);
 }
 
 pub fn window<Callback>(title: &str, callback: Callback)
 where
-    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+    Callback: FnMut(&mut dyn Control, Event) -> EventLoopControl,
 {
     let mut class_name = to_wstr::<16>(WNDCLASS_NAME);
 
@@ -101,7 +105,7 @@ where
     });
 
     let hwnd = {
-        let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(&title);
+        let mut w_title = to_wstr::<MAX_TITLE_LENGTH>(title);
         unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -125,6 +129,7 @@ where
         state: WindowState {
             high_surrogate: 0,
             handle: Handle { hwnd, hinstance },
+            min_size: PhysicalSize::default(),
         },
     });
 
@@ -178,7 +183,7 @@ where
 
 struct Window<Callback>
 where
-    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+    Callback: FnMut(&mut dyn Control, Event) -> EventLoopControl,
 {
     callback: Callback,
     state: WindowState,
@@ -187,17 +192,26 @@ where
 struct WindowState {
     handle: Handle,
     high_surrogate: u16,
+    min_size: PhysicalSize,
 }
 
 impl Control for WindowState {
     fn handle(&self) -> &Handle {
         &self.handle
     }
+
+    fn min_size(&self) -> PhysicalSize {
+        self.min_size
+    }
+
+    fn set_min_size(&mut self, size: PhysicalSize) {
+        self.min_size = size;
+    }
 }
 
 impl<Callback> Window<Callback>
 where
-    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+    Callback: FnMut(&mut dyn Control, Event) -> EventLoopControl,
 {
     fn dispatch(&mut self, event: Event) {
         let op = (self.callback)(&mut self.state, event);
@@ -215,7 +229,7 @@ unsafe extern "system" fn wndproc_trampoline<Callback>(
     lparam: LPARAM,
 ) -> LRESULT
 where
-    Callback: FnMut(&dyn Control, Event) -> EventLoopControl,
+    Callback: FnMut(&mut dyn Control, Event) -> EventLoopControl,
 {
     let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const RefCell<Window<Callback>>;
 
@@ -241,6 +255,14 @@ where
             }
             WM_CLOSE => {
                 window.borrow_mut().dispatch(Event::CloseRequested {});
+            }
+            WM_GETMINMAXINFO => {
+                let pointer = lparam.0 as *mut MINMAXINFO;
+                let min = window.borrow().state.min_size;
+                (*pointer).ptMinTrackSize = POINT {
+                    x: min.width.into(),
+                    y: min.height.into(),
+                };
             }
             // WM_DESTROY is not handled. We send out the Event::Destroyed
             // message once we exit the event loop instead to avoid a re-entrant
