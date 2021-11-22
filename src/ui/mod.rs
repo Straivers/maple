@@ -38,11 +38,17 @@ pub struct Context {
     cursor: Point,
     window_size: Extent,
     prev_cursor: Point,
+    was_clicked: bool,
 }
 
 impl Context {
     pub fn advance_frame(&mut self) {
         self.prev_cursor = self.cursor;
+        self.was_clicked = false;
+    }
+
+    pub fn update_click(&mut self) {
+        self.was_clicked = true;
     }
 
     pub fn update_cursor(&mut self, x: f32, y: f32) {
@@ -69,6 +75,10 @@ impl<'a> Builder<'a> {
 
     pub fn cursor(&self) -> Point {
         self.context.cursor
+    }
+
+    pub fn was_clicked(&self) -> bool {
+        self.context.was_clicked
     }
 
     pub fn region(&mut self, region: Region) {
@@ -194,7 +204,6 @@ impl Region {
                 color,
             });
         }
-
         for index in &Rect::INDICES {
             index_buffer.push(start + index);
         }

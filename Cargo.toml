@@ -8,6 +8,7 @@ win32 = { path = "modules/win32" }
 ash = { version = "0.33", default-features = false }
 lazy_static = "1.4.0"
 rand = "0.8.4"
+thiserror = "1.0.30"
 
 [dependencies.clap]
 version = "2.33.3"

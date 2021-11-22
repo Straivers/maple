@@ -13,7 +13,6 @@ struct Version(pub u16);
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Index(pub u16);
 
-#[derive(Debug)]
 struct Slot<T: Copy> {
     version: Version,
     payload: Payload<T>,
@@ -102,8 +101,8 @@ impl<T: Copy> Storage<T> {
         }
     }
 
-    /// Returns a slot to the [`SlotStorage`] identified by `id`.
-    pub fn free(&mut self, id: Id) -> Option<T> {
+    /// Removes the value addressed by `id` and frees the slot for future use.
+    pub fn take(&mut self, id: Id) -> Option<T> {
         if let Some(slot) = self.slots.get_mut(id.index.0 as usize) {
             if id.version != slot.version {
                 return None;
@@ -172,7 +171,7 @@ mod tests {
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.freelist_head, None);
 
-            slots.free(slot1);
+            assert_eq!(slots.take(slot1), Some(10));
             assert_eq!(slots.is_valid(slot1), false);
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.slots[0].payload, Payload::Free { next_free: None });
@@ -185,7 +184,7 @@ mod tests {
             assert_eq!(slots.slots.len(), 1);
             assert_eq!(slots.freelist_head, None);
 
-            slots.free(slot2);
+            slots.take(slot2);
         }
     }
 
@@ -198,14 +197,14 @@ mod tests {
 
         let slot1 = slots.alloc(1).unwrap();
         assert_eq!(slots.slots[0].version, Version(u16::MAX - 1));
-        slots.free(slot1);
+        slots.take(slot1);
         assert_eq!(slots.slots[0].version, Version(u16::MAX));
         assert!(slots.freelist_head.is_some());
 
         // Test that we can allocate a saturated node.
         let slot2 = slots.alloc(2).unwrap();
         assert_eq!(slots.slots[0].version, Version(u16::MAX));
-        slots.free(slot2);
+        slots.take(slot2);
         assert_eq!(slots.slots[0].version, Version(u16::MAX)); // No change expected here
 
         // Test that the slot was correctly retired.

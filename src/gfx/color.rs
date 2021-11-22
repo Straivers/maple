@@ -27,4 +27,26 @@ impl Color {
             a: a8,
         }
     }
+
+    pub fn random_rgb() -> Self {
+        use rand::random;
+        Color { r: random(), g: random(), b: random(), a: 255 }
+    }
+
+    pub fn unpack(packed: u32) -> Self {
+        Self {
+            r: packed as u8,
+            g: (packed >> 8) as u8,
+            b: (packed >> 16) as u8,
+            a: (packed >> 24) as u8,
+        }
+    }
+
+    pub fn pack(self) -> u32 {
+        let mut packed = self.r as u32;
+        packed |= (self.g as u32) << 8;
+        packed |= (self.b as u32) << 16;
+        packed |= (self.a as u32) << 24;
+        packed
+    }
 }

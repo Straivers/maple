@@ -8,8 +8,9 @@ mod ui;
 // use clap::App;
 
 use gfx::{Color, RendererWindow};
-use sys::{Event, EventLoopControl, PhysicalSize};
+use sys::{ButtonState, Event, EventLoopControl, MouseButton, PhysicalSize};
 use ui::Region;
+use registry::named::{IdOps, StrOps};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -37,7 +38,14 @@ pub enum WindowStatus {
 }
 
 fn run(_cli_options: &CliOptions) {
+    let mut registry = registry::named::Registry::new();
+    let id = registry.insert("color", Color::random_rgb().pack()).unwrap();
+
     spawn_window("Title 1", |ui| {
+        if ui.was_clicked() {
+            *registry.get_mut_id(id).unwrap() = Color::random_rgb().pack();
+        }
+
         // create a box
         ui.region(Region::with_children(
             Color::rgb(0, 0, 0),
@@ -49,7 +57,7 @@ fn run(_cli_options: &CliOptions) {
                     20.0,
                     ui::LayoutDirection::LeftToRight,
                     &[Region::new(
-                        Color::rgb(255, 0, 0),
+                        Color::unpack(*registry.get_id(id).unwrap()),
                         0.0,
                         ui::LayoutDirection::LeftToRight,
                     )],
@@ -66,6 +74,8 @@ fn run(_cli_options: &CliOptions) {
             ],
         ));
     });
+
+    registry.remove("color").unwrap();
 }
 
 pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) {
@@ -95,12 +105,18 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
                 );
             }
             Event::MouseButton {
-                button: _,
-                state: _,
+                button,
+                state,
             } => {
+                if button == MouseButton::Left && state == ButtonState::Pressed {
+                    ui.update_click();
+                }
                 // ui.input_click(button, state);
             }
-            Event::DoubleClick { button: _ } => {
+            Event::DoubleClick { button } => {
+                if button == MouseButton::Left {
+                    ui.update_click();
+                }
                 // ui.input_db_click(button);
             }
             Event::ScrollWheel {
