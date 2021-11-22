@@ -30,7 +30,12 @@ impl Color {
 
     pub fn random_rgb() -> Self {
         use rand::random;
-        Color { r: random(), g: random(), b: random(), a: 255 }
+        Color {
+            r: random(),
+            g: random(),
+            b: random(),
+            a: 255,
+        }
     }
 
     pub fn unpack(packed: u32) -> Self {

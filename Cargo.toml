@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-win32 = { path = "modules/win32" }
 ash = { version = "0.33", default-features = false }
 lazy_static = "1.4.0"
 rand = "0.8.4"
@@ -14,6 +13,17 @@ thiserror = "1.0.30"
 version = "2.33.3"
 default-features = false
 
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.25.0"
+features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+]
+
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "1.6.3"
 
@@ -22,8 +32,3 @@ shaderc = "0.7"
 
 # [profile.release]
 # debug = true
-
-[workspace]
-members = [
-    "modules/win32",
-]

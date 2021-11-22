@@ -4,11 +4,13 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use super::slot;
-use super::indexed::{Ops, Error as IndexedError};
 pub use super::{
     indexed::{self, Type},
     slot::Id,
+};
+use super::{
+    indexed::{Error as IndexedError, Ops},
+    slot,
 };
 
 #[derive(thiserror::Error, Debug)]

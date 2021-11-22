@@ -8,9 +8,9 @@ mod ui;
 // use clap::App;
 
 use gfx::{Color, RendererWindow};
+use registry::named::{IdOps, StrOps};
 use sys::{ButtonState, Event, EventLoopControl, MouseButton, PhysicalSize};
 use ui::Region;
-use registry::named::{IdOps, StrOps};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -39,7 +39,9 @@ pub enum WindowStatus {
 
 fn run(_cli_options: &CliOptions) {
     let mut registry = registry::named::Registry::new();
-    let id = registry.insert("color", Color::random_rgb().pack()).unwrap();
+    let id = registry
+        .insert("color", Color::random_rgb().pack())
+        .unwrap();
 
     spawn_window("Title 1", |ui| {
         if ui.was_clicked() {
@@ -104,10 +106,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
                     f32::from(window_size.height) - f32::from(y_pos),
                 );
             }
-            Event::MouseButton {
-                button,
-                state,
-            } => {
+            Event::MouseButton { button, state } => {
                 if button == MouseButton::Left && state == ButtonState::Pressed {
                     ui.update_click();
                 }

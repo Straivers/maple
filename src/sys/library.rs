@@ -1,6 +1,12 @@
 use std::ffi::{c_void, CStr};
 
-use win32::{GetProcAddress, LoadLibraryW, SetErrorMode, HINSTANCE, PSTR, SEM_FAILCRITICALERRORS};
+use windows::Win32::{
+    Foundation::{HINSTANCE, PSTR},
+    System::{
+        Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS},
+        LibraryLoader::{GetProcAddress, LoadLibraryW},
+    },
+};
 
 #[derive(Debug)]
 pub struct Library {
