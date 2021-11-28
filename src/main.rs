@@ -71,6 +71,11 @@ fn run(_cli_options: &CliOptions) {
                     &[
                         Region::new(Color::rgb(0, 255, 0), 0.0, ui::LayoutDirection::LeftToRight),
                         Region::new(Color::rgb(0, 0, 255), 0.0, ui::LayoutDirection::LeftToRight),
+                        Region::new(
+                            Color::rgb(100, 0, 255),
+                            0.0,
+                            ui::LayoutDirection::LeftToRight,
+                        ),
                     ],
                 ),
             ],

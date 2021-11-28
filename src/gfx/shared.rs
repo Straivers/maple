@@ -40,7 +40,7 @@ lazy_static! {
     pub static ref PIPELINE_LAYOUT: vk::PipelineLayout = {
         let push_constants = [vk::PushConstantRange {
             offset: 0,
-            size: std::mem::size_of::<Extent>() as u32,
+            size: std::mem::size_of::<Extent<f32>>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
@@ -52,7 +52,7 @@ lazy_static! {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vertex {
-    pub position: Point,
+    pub position: Point<f32>,
     pub color: Color,
 }
 
@@ -75,7 +75,7 @@ impl Vertex {
             binding: 0,
             location: 1,
             format: vk::Format::R8G8B8A8_UNORM,
-            offset: std::mem::size_of::<Point>() as u32,
+            offset: std::mem::size_of::<Point<f32>>() as u32,
         },
     ];
 }

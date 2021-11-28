@@ -1,64 +1,84 @@
+use crate::traits::Number;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
+pub struct Point<T>
+where
+    T: Number + Default,
+{
+    pub x: T,
+    pub y: T,
 }
 
-impl Point {
-    pub fn new(x: f32, y: f32) -> Self {
+impl<T> Point<T>
+where
+    T: Number + Default,
+{
+    pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 
-    pub fn is_in(&self, rect: Rect) -> bool {
+    pub fn is_in(&self, rect: Rect<T>) -> bool {
         rect.contains_point(*self)
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Extent {
-    pub width: f32,
-    pub height: f32,
+pub struct Extent<T>
+where
+    T: Number + Default,
+{
+    pub width: T,
+    pub height: T,
 }
 
-impl Extent {
-    pub fn new(width: f32, height: f32) -> Self {
+impl<T> Extent<T>
+where
+    T: Number + Default,
+{
+    pub fn new(width: T, height: T) -> Self {
         Self { width, height }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Rect {
-    pub lower_left_corner: Point,
-    pub extent: Extent,
+pub struct Rect<T>
+where
+    T: Number + Default,
+{
+    pub lower_left_corner: Point<T>,
+    pub extent: Extent<T>,
 }
 
-impl Rect {
+impl<T> Rect<T>
+where
+    T: Number + Default,
+{
     pub const INDICES: [u16; 6] = [0, 3, 2, 0, 2, 1];
 
-    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
+    pub fn new(x: T, y: T, width: T, height: T) -> Self {
         Self {
             lower_left_corner: Point::new(x, y),
             extent: Extent::new(width, height),
         }
     }
 
-    pub fn x(&self) -> f32 {
+    pub fn x(&self) -> T {
         self.lower_left_corner.x
     }
 
-    pub fn y(&self) -> f32 {
+    pub fn y(&self) -> T {
         self.lower_left_corner.y
     }
 
-    pub fn width(&self) -> f32 {
+    pub fn width(&self) -> T {
         self.extent.width
     }
 
-    pub fn height(&self) -> f32 {
+    pub fn height(&self) -> T {
         self.extent.height
     }
 
-    pub fn points(&self) -> [Point; 4] {
+    pub fn points(&self) -> [Point<T>; 4] {
         [
             self.lower_left_corner,
             Point {
@@ -76,7 +96,7 @@ impl Rect {
         ]
     }
 
-    pub fn contains_point(&self, point: Point) -> bool {
+    pub fn contains_point(&self, point: Point<T>) -> bool {
         let left = self.lower_left_corner.x;
         let right = self.lower_left_corner.x + self.extent.width;
         let top = self.lower_left_corner.y + self.extent.height;

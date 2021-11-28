@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+mod layout;
 
 use crate::{
     gfx::{Color, Extent, Point, Rect, Vertex},
@@ -35,9 +35,9 @@ v1: Panel, click to change color
 
 #[derive(Default)]
 pub struct Context {
-    cursor: Point,
-    window_size: Extent,
-    prev_cursor: Point,
+    cursor: Point<f32>,
+    window_size: Extent<f32>,
+    prev_cursor: Point<f32>,
     was_clicked: bool,
 }
 
@@ -73,7 +73,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn cursor(&self) -> Point {
+    pub fn cursor(&self) -> Point<f32> {
         self.context.cursor
     }
 
@@ -143,7 +143,7 @@ impl Region {
 
     pub fn write_buffers(
         &self,
-        bounds: Rect,
+        bounds: Rect<f32>,
         vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
         index_buffer: &mut dyn OutputIter<u16>,
     ) {
@@ -191,7 +191,7 @@ impl Region {
     }
 
     fn write_rect(
-        rect: Rect,
+        rect: Rect<f32>,
         color: Color,
         vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
         index_buffer: &mut dyn OutputIter<u16>,
@@ -204,7 +204,7 @@ impl Region {
                 color,
             });
         }
-        for index in &Rect::INDICES {
+        for index in &Rect::<f32>::INDICES {
             index_buffer.push(start + index);
         }
     }
