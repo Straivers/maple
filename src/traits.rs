@@ -21,14 +21,14 @@ impl<T> CountingOutputIter<T> for Vec<T> {
 /// A marker trait for plain-old-data types.
 pub trait PoD: 'static + Sized + Copy + Send + Sync {}
 
-macro_rules! impl_trait {
+macro_rules! impl_marker_trait {
     ($trait:ident for $($i:ty)+) => {
         $(impl $trait for $i {})+
     };
 }
 
-impl_trait!(PoD for usize u8 u16 u32 u64 isize i8 i16 i32 i64);
-impl_trait!(PoD for f64 f32);
+impl_marker_trait!(PoD for usize u8 u16 u32 u64 isize i8 i16 i32 i64);
+impl_marker_trait!(PoD for f64 f32);
 
 /// The Number trait represents a type that can be treated as a simple number.
 /// It is sized, cheaply copyable, printable, and supports the basic numerical
@@ -37,8 +37,8 @@ impl_trait!(PoD for f64 f32);
 /// This trait must be manually defined.
 pub trait Number: PoD + NumberOps {}
 
-impl_trait!(Number for usize u8 u16 u32 u64 isize i8 i16 i32 i64);
-impl_trait!(Number for f64 f32);
+impl_marker_trait!(Number for usize u8 u16 u32 u64 isize i8 i16 i32 i64);
+impl_marker_trait!(Number for f64 f32);
 
 /// Trait for the basic numerical operations.
 pub trait NumberOps<Rhs = Self, Output = Self>:

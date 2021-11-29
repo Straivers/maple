@@ -2,7 +2,7 @@
 //!
 //! All units are held in device-independent and DPI-scaled pixels.
 
-use std::num::NonZeroU16;
+#![allow(dead_code)]
 
 use crate::gfx::{Extent, Rect};
 
@@ -41,24 +41,93 @@ impl AsPx for u16 {
     }
 }
 
-#[repr(u8)]
-enum Type {
-    Row
+enum VerticalAlignment {
+    /// ```
+    /// ﹇
+    /// A
+    /// B
+    /// C
+    /// 
+    /// 
+    /// ﹈
+    /// ```
+    Top,
+    /// ```
+    /// ﹇
+    /// 
+    /// 
+    /// A
+    /// B
+    /// C
+    /// ﹈
+    /// ```
+    Bottom,
+    /// ```
+    /// ﹇
+    /// 
+    /// A
+    /// B
+    /// C
+    /// 
+    /// ﹈
+    /// ```
+    Center,
+    /// ```
+    /// ﹇
+    /// 
+    /// A
+    /// 
+    /// B
+    /// 
+    /// C
+    /// 
+    /// ﹈
+    /// ```
+    Even,
 }
 
-struct RowItem {
-    min_extent: Extent<Px>,
-    max_extent: Extent<Px>,
+enum HorizontalAlignment {
+    /// `[A B C        ]`
+    Left,
+    /// `[        A B C]`
+    Right,
+    /// `[    A B C    ]`
+    Center,
+    /// `[  A   B   C  ]`
+    Justified,
 }
 
-struct RowContainer {
-    items: RowItem,
-    vertical_margin: Px,
+enum Layout {
+    Row {
+        alignment: VerticalAlignment,
+        vertical_margin: Px
+    },
+    Column {
+        alignment: HorizontalAlignment,
+        horizontal_margin: Px
+    },
+    Flex {
+        alignment: HorizontalAlignment,
+        vertical_margin: Px,
+        horizontal_margin: Px,
+    }
 }
 
 struct TreeNode {
     widget_id: u16,
-    bounds: Rect<Px>,
+    min_extent: Extent<Px>,
+    max_extent: Extent<Px>,
     first_child: u16,
     num_children: u16,
+    layout: Layout,
+}
+
+#[test]
+fn t() {
+    println!("{}", std::mem::size_of::<TreeNode>());
+}
+
+struct Tree {
+    nodes: Vec<TreeNode>,
+    children: Vec<u16>,
 }
