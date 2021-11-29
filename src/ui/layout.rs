@@ -2,34 +2,17 @@
 //!
 //! All units are held in device-independent and DPI-scaled pixels.
 
-#![allow(dead_code)]
-
 use crate::gfx::{Extent, Rect};
 
-/// Unit representing device-independent and DPI-scaled pixels.
-#[derive(Clone, Copy, Default, PartialEq, PartialOrd)]
-struct Px(u16);
+use super::tree::{self, Tree};
 
-impl crate::traits::PoD for Px {}
-impl crate::traits::Number for Px {}
-
-macro_rules! impl_ops {
-    ($op:path, $func:ident) => {
-        impl $op for Px {
-            type Output = Px;
-
-            fn $func(self, rhs: Self) -> Self::Output {
-                Px(self.0.$func(rhs.0))
-            }
-        }
-    };
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Could not add a new layout node to the tree.")]
+    TooManyNodes,
 }
 
-impl_ops!(std::ops::Add, add);
-impl_ops!(std::ops::Sub, sub);
-impl_ops!(std::ops::Mul, mul);
-impl_ops!(std::ops::Div, div);
-impl_ops!(std::ops::Rem, rem);
+crate::traits::newtype_number!(Px, u16);
 
 trait AsPx {
     fn px(self) -> Px;
@@ -41,7 +24,9 @@ impl AsPx for u16 {
     }
 }
 
-enum VerticalAlignment {
+#[derive(Clone, Copy)]
+pub enum YAlignment {
+    None,
     /// ```
     /// ﹇
     /// A
@@ -86,7 +71,9 @@ enum VerticalAlignment {
     Even,
 }
 
-enum HorizontalAlignment {
+#[derive(Clone, Copy)]
+pub enum XAlignment {
+    None,
     /// `[A B C        ]`
     Left,
     /// `[        A B C]`
@@ -94,40 +81,116 @@ enum HorizontalAlignment {
     /// `[    A B C    ]`
     Center,
     /// `[  A   B   C  ]`
-    Justified,
+    Even,
 }
 
-enum Layout {
-    Row {
-        alignment: VerticalAlignment,
-        vertical_margin: Px
-    },
-    Column {
-        alignment: HorizontalAlignment,
-        horizontal_margin: Px
-    },
-    Flex {
-        alignment: HorizontalAlignment,
-        vertical_margin: Px,
-        horizontal_margin: Px,
+#[derive(Clone, Copy)]
+pub struct Alignment(u8);
+
+impl Alignment {
+    pub fn left() -> Self {
+        Self(XAlignment::Left as u8)
+    }
+
+    pub fn x_center() -> Self {
+        Self(XAlignment::Center as u8)
+    }
+
+    pub fn right() -> Self {
+        Self(XAlignment::Right as u8)
+    }
+
+    pub fn x_even() -> Self {
+        Self(XAlignment::Even as u8)
+    }
+
+    pub fn top() -> Self {
+        Self((YAlignment::Top as u8) << 4)
+    }
+
+    pub fn y_center() -> Self {
+        Self((YAlignment::Center as u8) << 4)
+    }
+
+    pub fn bottom() -> Self {
+        Self((YAlignment::Bottom as u8) << 4)
+    }
+
+    pub fn y_even() -> Self {
+        Self((YAlignment::Even as u8) << 4)
+    }
+
+    pub fn new(x: XAlignment, y: YAlignment) -> Self {
+        Self((x as u8) | (y as u8) << 4)
+    }
+
+    pub fn is_x(self) -> bool {
+        (self.0 & 0x0F) != 0
+    }
+
+    pub fn is_y(self) -> bool {
+        (self.0 & 0xF0) != 0
+    }
+
+    pub fn x(self) -> Option<XAlignment> {
+        match self.0 & 0x0F {
+            1 => Some(XAlignment::Left),
+            2 => Some(XAlignment::Center),
+            3 => Some(XAlignment::Right),
+            4 => Some(XAlignment::Even),
+            _ => None,
+        }
+    }
+
+    pub fn y(self) -> Option<YAlignment> {
+        match self.0 & 0x0F {
+            0x10 /*0x0F + 1*/ => Some(YAlignment::Top),
+            0x11 /*0x0F + 2*/ => Some(YAlignment::Center),
+            0x12 /*0x0F + 3*/ => Some(YAlignment::Bottom),
+            0x13 /*0x0F + 4*/ => Some(YAlignment::Even),
+            _ => None
+        }
     }
 }
 
-struct TreeNode {
+#[derive(Clone, Copy)]
+pub enum Kind {
+    None,
+    Row {
+        alignment: YAlignment,
+        margin: Px,
+    },
+    Column {
+        alignment: XAlignment,
+        margin: Px,
+    },
+    Flex {
+        alignment: Alignment,
+        vertical_margin: Px,
+        horizontal_margin: Px,
+    },
+}
+
+impl Default for Kind {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Layout {
     widget_id: u16,
     min_extent: Extent<Px>,
     max_extent: Extent<Px>,
-    first_child: u16,
-    num_children: u16,
-    layout: Layout,
+    layout: Kind,
 }
 
-#[test]
-fn t() {
-    println!("{}", std::mem::size_of::<TreeNode>());
+#[derive(Clone, Copy)]
+pub struct Region {
+    widget_id: u16,
+    bounds: Rect<Px>,
 }
 
-struct Tree {
-    nodes: Vec<TreeNode>,
-    children: Vec<u16>,
+pub fn compute_layout(soft_bounds: Rect<Px>, tree: &tree::Tree<Layout>, regions: &mut tree::Tree<Region>) {
+    todo!()
 }

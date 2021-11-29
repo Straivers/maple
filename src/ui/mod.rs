@@ -1,4 +1,5 @@
 mod layout;
+mod tree;
 
 use crate::{
     gfx::{Color, Extent, Point, Rect, Vertex},

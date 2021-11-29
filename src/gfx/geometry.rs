@@ -38,6 +38,13 @@ where
     pub fn new(width: T, height: T) -> Self {
         Self { width, height }
     }
+
+    pub fn max_value() -> Self {
+        Self {
+            width: T::max_value(),
+            height: T::max_value(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
