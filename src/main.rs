@@ -69,10 +69,10 @@ fn run(_cli_options: &CliOptions) {
                     10.0,
                     ui::LayoutDirection::TopToBottom,
                     &[
+                        Region::new(Color::rgb(255, 0, 0), 0.0, ui::LayoutDirection::LeftToRight),
                         Region::new(Color::rgb(0, 255, 0), 0.0, ui::LayoutDirection::LeftToRight),
-                        Region::new(Color::rgb(0, 0, 255), 0.0, ui::LayoutDirection::LeftToRight),
                         Region::new(
-                            Color::rgb(100, 0, 255),
+                            Color::rgb(0, 0, 255),
                             0.0,
                             ui::LayoutDirection::LeftToRight,
                         ),

@@ -60,7 +60,7 @@ impl<T> Rect<T>
 where
     T: Number + Default,
 {
-    pub const INDICES: [u16; 6] = [0, 3, 2, 0, 2, 1];
+    pub const INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
     pub fn new(x: T, y: T, width: T, height: T) -> Self {
         Self {
