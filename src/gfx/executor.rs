@@ -2,11 +2,11 @@
 //! controls access to the graphics queue.
 //!
 //! Communication between the render thread and window threads occurs through
-//! the types defined in the render_message module.
+//! the types defined in the `render_message` module.
 
 use ash::vk;
 
-use super::shared::*;
+use super::shared::{Request, Response, VULKAN};
 
 pub struct Executor {}
 

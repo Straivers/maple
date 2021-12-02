@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use super::{
     color::Color,
     geometry::{Extent, Point},
-    recorder::CommandRecorder,
+    recorder::Recorder,
     vulkan::Vulkan,
 };
 use crate::sys::{Library, PhysicalSize};
@@ -113,7 +113,7 @@ pub fn to_extent(size: PhysicalSize) -> vk::Extent2D {
 
 #[allow(clippy::too_many_arguments)]
 pub fn record_command_buffer(
-    cmd: &CommandRecorder,
+    cmd: &Recorder,
     viewport: vk::Rect2D,
     pipeline: vk::Pipeline,
     render_pass: vk::RenderPass,

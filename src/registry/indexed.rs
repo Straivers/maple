@@ -45,7 +45,7 @@ pub enum Error {
 pub struct TypedId<T>(Id, PhantomData<T>);
 
 impl<T> TypedId<T> {
-    pub fn get(&self) -> Id {
+    pub fn get(self) -> Id {
         self.0
     }
 }
@@ -125,7 +125,7 @@ impl Registry {
             Type::U32 | Type::I32 | Type::F32 | Type::Char => unsafe {
                 self.objects_32.delete(object_index, |_| {});
             },
-            _ => unimplemented!(),
+            Type::Unknown => unreachable!(),
         }
 
         Ok(())
@@ -257,7 +257,7 @@ impl_ops!(
     Type::Any,
     objects_128,
     Object128,
-    |v| ManuallyDrop::new(v),
+    ManuallyDrop::new,
     |v| ManuallyDrop::drop(&mut v.any)
 );
 impl_ops_simple!(u64, Type::U64, objects_64, Object64);

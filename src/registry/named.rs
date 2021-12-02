@@ -59,7 +59,7 @@ impl Registry {
     }
 
     pub fn remove_id(&mut self, id: Id) -> Result<(), Error> {
-        self.indexed.remove(id).map_err(|e| Error::from(e))
+        self.indexed.remove(id).map_err(Error::from)
     }
 }
 

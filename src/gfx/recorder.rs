@@ -1,11 +1,11 @@
 use ash::{vk, Device};
 
-pub struct CommandRecorder<'a> {
+pub struct Recorder<'a> {
     device: &'a Device,
     pub buffer: vk::CommandBuffer,
 }
 
-impl<'a> CommandRecorder<'a> {
+impl<'a> Recorder<'a> {
     pub(crate) fn new(device: &'a ash::Device, buffer: vk::CommandBuffer) -> Self {
         Self { device, buffer }
     }
@@ -85,10 +85,8 @@ impl<'a> CommandRecorder<'a> {
         constant: &T,
     ) {
         unsafe {
-            let bytes = std::slice::from_raw_parts(
-                constant as *const T as *const u8,
-                std::mem::size_of::<T>(),
-            );
+            let bytes =
+                std::slice::from_raw_parts((constant as *const T).cast(), std::mem::size_of::<T>());
             self.device
                 .cmd_push_constants(self.buffer, layout, stage, offset, bytes);
         }

@@ -14,7 +14,7 @@ use ash::{
     vk, Device, EntryCustom, Instance,
 };
 
-use super::recorder::CommandRecorder;
+use super::recorder::Recorder;
 use crate::{
     array_vec::ArrayVec,
     sys::{Handle, Library},
@@ -30,12 +30,12 @@ const DEBUG_UTILS_EXTENSION_NAME: *const c_char = "VK_EXT_debug_utils\0\0".as_pt
 const WIN32_SURFACE_EXTENSION_NAME: *const c_char = "VK_KHR_win32_surface\0".as_ptr().cast();
 const SWAPCHAIN_EXTENSION_NAME: *const c_char = "VK_KHR_swapchain\0".as_ptr().cast();
 
-pub struct VulkanDebug {
+pub struct DebugInfo {
     api: DebugUtils,
     callback: vk::DebugUtilsMessengerEXT,
 }
 
-impl VulkanDebug {
+impl DebugInfo {
     fn new(
         entry: &EntryCustom<Library>,
         instance: &Instance,
@@ -70,7 +70,7 @@ pub struct Vulkan {
 
     pipeline_cache: vk::PipelineCache,
 
-    debug: Option<VulkanDebug>,
+    debug: Option<DebugInfo>,
     allocation_callbacks: Option<vk::AllocationCallbacks>,
 }
 
@@ -140,7 +140,7 @@ impl Vulkan {
         };
 
         let debug = if use_validation {
-            Some(VulkanDebug::new(
+            Some(DebugInfo::new(
                 &library,
                 &instance,
                 &debug_callback_create_info,
@@ -745,8 +745,8 @@ impl Vulkan {
         }
     }
 
-    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> CommandRecorder {
-        CommandRecorder::new(&self.device, buffer)
+    pub fn record_command_buffer(&self, buffer: vk::CommandBuffer) -> Recorder {
+        Recorder::new(&self.device, buffer)
     }
 
     pub fn submit_to_graphics_queue(&self, submits: &[vk::SubmitInfo], fence: vk::Fence) {

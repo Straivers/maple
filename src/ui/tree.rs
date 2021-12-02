@@ -10,14 +10,18 @@ pub enum Error {
 
 #[derive(Clone, Copy)]
 pub struct Node<Payload>
-where Payload: Clone + Copy {
+where
+    Payload: Clone,
+{
     payload: Payload,
     first_child: Index,
     next: Index,
 }
 
-impl <Payload> Node<Payload>
-where Payload: Clone + Copy {
+impl<Payload> Node<Payload>
+where
+    Payload: Clone,
+{
     fn new(payload: Payload) -> Self {
         Self {
             payload,
@@ -50,7 +54,9 @@ impl Index {
 }
 
 pub struct Tree<Payload>
-where Payload: Clone + Copy {
+where
+    Payload: Clone,
+{
     /// Data stored per-node in the tree.
     data: Vec<Payload>,
 
@@ -70,7 +76,9 @@ where Payload: Clone + Copy {
 }
 
 impl<Payload> Tree<Payload>
-where Payload: Clone + Copy {
+where
+    Payload: Clone,
+{
     pub fn new() -> Self {
         Self {
             data: vec![],
@@ -78,15 +86,15 @@ where Payload: Clone + Copy {
             children_array: vec![0],
         }
     }
-    
+
     pub fn get(&self, node: Index) -> &Payload {
         &self.data[node.0 as usize]
     }
-    
+
     pub fn get_mut(&mut self, node: Index) -> &mut Payload {
         &mut self.data[node.0 as usize]
     }
-    
+
     pub fn children(&self, node: Index) -> &[Index] {
         if self.children[node.0 as usize] == 0 {
             &[]
@@ -94,10 +102,8 @@ where Payload: Clone + Copy {
             let ptr = self.children[node.0 as usize] as usize;
             let len = self.children_array[ptr] as usize;
             let start: *const _ = &self.children_array[ptr + 1];
-            
-            unsafe {
-                std::slice::from_raw_parts(start as *const _, len)
-            }
+
+            unsafe { std::slice::from_raw_parts(start.cast(), len) }
         }
     }
 
@@ -126,16 +132,26 @@ where Payload: Clone + Copy {
             // Reserve the requisite amount of space to store header + indices.
             self.children_array.reserve(children.len() + 1);
             // Push slice header with length of slice.
-            self.children_array.push(children.len().try_into().map_err(|_| Error::TooManyChildren)?);
+            self.children_array.push(
+                children
+                    .len()
+                    .try_into()
+                    .map_err(|_| Error::TooManyChildren)?,
+            );
             // Extend array with indices of children.
             self.children_array.extend_from_slice(unsafe {
-                std::slice::from_raw_parts(children.as_ptr() as _, children.len())
+                std::slice::from_raw_parts(children.as_ptr().cast(), children.len())
             });
 
             i.try_into().map_err(|_| Error::TooManyNodes)?
         };
 
-        let index = Index(self.data.len().try_into().map_err(|_| Error::TooManyNodes)?);
+        let index = Index(
+            self.data
+                .len()
+                .try_into()
+                .map_err(|_| Error::TooManyNodes)?,
+        );
         self.data.push(payload);
         self.children.push(first_child);
         Ok(index)
