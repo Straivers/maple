@@ -9,18 +9,18 @@ use windows::Win32::{
         RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_DBLCLKS,
         CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MINMAXINFO, MSG,
         PM_REMOVE, SW_SHOW, WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE, WM_CREATE,
-        WM_ERASEBKGND, WM_GETMINMAXINFO, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
-        WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
-        WM_MOUSEWHEEL, WM_PAINT, WM_QUIT, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE,
-        WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        WM_ERASEBKGND, WM_GETMINMAXINFO, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+        WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     },
 };
 
-use super::{
-    dpi::PhysicalSize,
-    input::{ButtonState, MouseButton},
+use super::input::{ButtonState, Event as InputEvent, MouseButton};
+use crate::{
+    array_vec::ArrayVec,
+    px::Px,
+    shapes::{Extent, Point},
 };
-use crate::array_vec::ArrayVec;
 
 const WNDCLASS_NAME: &str = "maple_wndclass";
 
@@ -34,33 +34,12 @@ static REGISTER_CLASS: Once = Once::new();
 
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
-    Created {
-        size: PhysicalSize,
-    },
+    Created { size: Extent },
     Destroyed {},
     CloseRequested {},
-    Resized {
-        size: PhysicalSize,
-    },
+    Resized { size: Extent },
     Update {},
-    CursorMove {
-        x_pos: i16,
-        y_pos: i16,
-    },
-    MouseButton {
-        button: MouseButton,
-        state: ButtonState,
-    },
-    DoubleClick {
-        button: MouseButton,
-    },
-    ScrollWheel {
-        scroll_x: f32,
-        scroll_y: f32,
-    },
-    Char {
-        codepoint: char,
-    },
+    Input(super::input::Event),
 }
 
 #[derive(Debug, PartialEq)]
@@ -79,9 +58,9 @@ pub struct Handle {
 pub trait Control {
     fn handle(&self) -> &Handle;
 
-    fn min_size(&self) -> PhysicalSize;
+    fn min_size(&self) -> Extent;
 
-    fn set_min_size(&mut self, size: PhysicalSize);
+    fn set_min_size(&mut self, size: Extent);
 }
 
 pub fn window<Callback>(title: &str, callback: Callback)
@@ -97,7 +76,7 @@ where
         let cursor = unsafe { LoadCursorW(None, &IDC_ARROW) };
 
         let class = WNDCLASSW {
-            style: CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS,
+            style: CS_VREDRAW | CS_HREDRAW, /*| CS_DBLCLKS // for double clicks */
             hInstance: hinstance,
             lpfnWndProc: Some(wndproc_trampoline::<Callback>),
             lpszClassName: PWSTR(class_name.as_mut_ptr()),
@@ -133,7 +112,7 @@ where
         state: WindowState {
             high_surrogate: 0,
             handle: Handle { hwnd, hinstance },
-            min_size: PhysicalSize::default(),
+            min_size: Extent::default(),
         },
     });
 
@@ -148,7 +127,10 @@ where
             .try_into()
             .expect("Window heigth is negative or > 65535");
         window.borrow_mut().dispatch(Event::Created {
-            size: PhysicalSize { width, height },
+            size: Extent {
+                width: Px(width),
+                height: Px(height),
+            },
         });
     }
 
@@ -196,7 +178,7 @@ where
 struct WindowState {
     handle: Handle,
     high_surrogate: u16,
-    min_size: PhysicalSize,
+    min_size: Extent,
 }
 
 impl Control for WindowState {
@@ -204,11 +186,11 @@ impl Control for WindowState {
         &self.handle
     }
 
-    fn min_size(&self) -> PhysicalSize {
+    fn min_size(&self) -> Extent {
         self.min_size
     }
 
-    fn set_min_size(&mut self, size: PhysicalSize) {
+    fn set_min_size(&mut self, size: Extent) {
         self.min_size = size;
     }
 }
@@ -254,7 +236,10 @@ where
                     .try_into()
                     .expect("Window height out of bounds!");
                 window.borrow_mut().dispatch(Event::Created {
-                    size: PhysicalSize { width, height },
+                    size: Extent {
+                        width: Px(width),
+                        height: Px(height),
+                    },
                 });
             }
             WM_CLOSE => {
@@ -264,8 +249,8 @@ where
                 let pointer = lparam.0 as *mut MINMAXINFO;
                 let min = window.borrow().state.min_size;
                 (*pointer).ptMinTrackSize = POINT {
-                    x: min.width.into(),
-                    y: min.height.into(),
+                    x: min.width.0.into(),
+                    y: min.height.0.into(),
                 };
             }
             // WM_DESTROY is not handled. We send out the Event::Destroyed
@@ -276,12 +261,12 @@ where
                 let width = (lparam.0 as i16)
                     .try_into()
                     .expect("Window width is negative or > 65535");
-                let height = (lparam.0 >> i16::BITS)
+                let height = ((lparam.0 >> i16::BITS) as i16)
                     .try_into()
                     .expect("Window height is negative or > 65535");
 
                 window.borrow_mut().dispatch(Event::Resized {
-                    size: PhysicalSize { width, height },
+                    size: Extent { width, height },
                 });
             }
             WM_ERASEBKGND => {
@@ -290,51 +275,59 @@ where
                 */
                 return LRESULT(1);
             }
-            WM_MOUSEMOVE => window.borrow_mut().dispatch(Event::CursorMove {
-                x_pos: lparam.0 as i16,
-                y_pos: (lparam.0 >> 16) as i16,
-            }),
-            WM_LBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Left,
-                state: ButtonState::Pressed,
-            }),
-            WM_LBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Left,
-                state: ButtonState::Released,
-            }),
-            WM_MBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Middle,
-                state: ButtonState::Pressed,
-            }),
-            WM_MBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Middle,
-                state: ButtonState::Released,
-            }),
-            WM_RBUTTONDOWN => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Right,
-                state: ButtonState::Pressed,
-            }),
-            WM_RBUTTONUP => window.borrow_mut().dispatch(Event::MouseButton {
-                button: MouseButton::Right,
-                state: ButtonState::Released,
-            }),
-            WM_LBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
-                button: MouseButton::Left,
-            }),
-            WM_RBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
-                button: MouseButton::Right,
-            }),
-            WM_MBUTTONDBLCLK => window.borrow_mut().dispatch(Event::DoubleClick {
-                button: MouseButton::Middle,
-            }),
-            WM_MOUSEWHEEL => window.borrow_mut().dispatch(Event::ScrollWheel {
-                scroll_x: 0.0,
-                scroll_y: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-            }),
-            WM_MOUSEHWHEEL => window.borrow_mut().dispatch(Event::ScrollWheel {
-                scroll_x: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
-                scroll_y: 0.0,
-            }),
+            WM_MOUSEMOVE => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::CursorMove {
+                    position: Point::new(Px(lparam.0 as i16), Px((lparam.0 >> 16) as i16)),
+                })),
+            WM_LBUTTONDOWN => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Left,
+                    state: ButtonState::Pressed,
+                })),
+            WM_LBUTTONUP => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Left,
+                    state: ButtonState::Released,
+                })),
+            WM_MBUTTONDOWN => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Middle,
+                    state: ButtonState::Pressed,
+                })),
+            WM_MBUTTONUP => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Middle,
+                    state: ButtonState::Released,
+                })),
+            WM_RBUTTONDOWN => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Right,
+                    state: ButtonState::Pressed,
+                })),
+            WM_RBUTTONUP => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::MouseButton {
+                    button: MouseButton::Right,
+                    state: ButtonState::Released,
+                })),
+            WM_MOUSEWHEEL => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::ScrollWheel {
+                    x: 0.0,
+                    y: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+                })),
+            WM_MOUSEHWHEEL => window
+                .borrow_mut()
+                .dispatch(Event::Input(InputEvent::ScrollWheel {
+                    x: (wparam.0 >> 16) as i16 as f32 / (WHEEL_DELTA as f32),
+                    y: 0.0,
+                })),
             WM_CHAR => {
                 let mut window_mut = window.borrow_mut();
                 if (wparam.0 & 0xD800) == 0xD800 {
@@ -349,7 +342,7 @@ where
                     })
                     .unwrap();
 
-                    window_mut.dispatch(Event::Char { codepoint });
+                    window_mut.dispatch(Event::Input(InputEvent::Char { codepoint }));
                 }
             }
             WM_PAINT => window.borrow_mut().dispatch(Event::Update {}),

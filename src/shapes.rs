@@ -27,14 +27,14 @@ impl Add<Extent> for Point {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Offset {
-    x: Px,
-    y: Px,
+    pub x: Px,
+    pub y: Px,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Extent {
-    width: Px,
-    height: Px,
+    pub width: Px,
+    pub height: Px,
 }
 
 impl Extent {

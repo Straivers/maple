@@ -4,7 +4,7 @@ use ash::vk;
 use lazy_static::lazy_static;
 
 use super::{color::Color, recorder::Recorder, vulkan::Vulkan};
-use crate::sys::{Library, PhysicalSize};
+use crate::{shapes::Extent, sys::Library};
 
 pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] =
     include_bytes!("../../shaders/simple_vertex_vert.spv");
@@ -104,10 +104,10 @@ pub enum Response {
     CommandsSubmitted { image_id: u32 },
 }
 
-pub fn to_extent(size: PhysicalSize) -> vk::Extent2D {
+pub fn to_extent(size: Extent) -> vk::Extent2D {
     vk::Extent2D {
-        width: size.width.into(),
-        height: size.height.into(),
+        width: size.width.0 as u32,
+        height: size.height.0 as u32,
     }
 }
 

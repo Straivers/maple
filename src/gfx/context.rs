@@ -7,7 +7,10 @@ use super::{
     },
     vulkan::SwapchainData,
 };
-use crate::sys::{Handle, PhysicalSize};
+use crate::{
+    shapes::Extent,
+    sys::{Handle, PhysicalSize},
+};
 
 pub const FRAMES_IN_FLIGHT: usize = 2;
 pub const DEFAULT_VERTEX_BUFFER_SIZE: usize = 8192;
@@ -87,7 +90,7 @@ impl RendererWindow {
         }
     }
 
-    pub fn bind(&mut self, window: &Handle, window_size: PhysicalSize) {
+    pub fn bind(&mut self, window: &Handle, window_size: Extent) {
         let extent = to_extent(window_size);
 
         self.surface = VULKAN.create_surface(window);
@@ -100,7 +103,7 @@ impl RendererWindow {
 
     pub fn draw(
         &mut self,
-        window_size: PhysicalSize,
+        window_size: Extent,
         vertices: &[Vertex],
         indices: &[u16],
     ) -> Option<Request> {

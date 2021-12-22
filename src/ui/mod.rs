@@ -63,25 +63,15 @@ impl Context {
     }
 }
 
-pub struct Builder<'a> {
-    context: &'a mut Context,
+pub struct Builder {
     region: Region,
 }
 
-impl<'a> Builder<'a> {
-    pub fn new(context: &'a mut Context) -> Self {
+impl Builder {
+    pub fn new() -> Self {
         Self {
-            context,
             region: Region::new(Color::rgba(0, 0, 0, 0), Px(0), LayoutDirection::LeftToRight),
         }
-    }
-
-    pub fn cursor(&self) -> Point {
-        self.context.cursor
-    }
-
-    pub fn was_clicked(&self) -> bool {
-        self.context.was_clicked
     }
 
     pub fn region(&mut self, region: Region) {
@@ -90,12 +80,13 @@ impl<'a> Builder<'a> {
 
     pub fn build(
         self,
-        vertex_buffer: &'a mut dyn CountingOutputIter<Vertex>,
-        index_buffer: &'a mut dyn OutputIter<u16>,
+        window_size: Extent,
+        vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
+        index_buffer: &mut dyn OutputIter<u16>,
     ) {
         let bounds = Rect {
             point: Point::default(),
-            extent: self.context.window_size,
+            extent: window_size,
         };
         self.region
             .write_buffers(bounds, vertex_buffer, index_buffer);
