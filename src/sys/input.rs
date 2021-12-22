@@ -25,3 +25,5 @@ impl Default for MouseButton {
         Self::Unknown
     }
 }
+
+pub struct InputState {}

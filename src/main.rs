@@ -1,6 +1,8 @@
 mod array_vec;
 mod gfx;
+mod px;
 mod registry;
+mod shapes;
 mod sys;
 mod traits;
 mod ui;
@@ -8,9 +10,10 @@ mod ui;
 // use clap::App;
 
 use gfx::{Color, RendererWindow};
+use px::Px;
 use registry::named::{IdOps, StrOps};
 use sys::{ButtonState, Event, EventLoopControl, MouseButton, PhysicalSize};
-use ui::{Px, Region};
+use ui::Region;
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";

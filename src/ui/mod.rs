@@ -1,16 +1,13 @@
 mod layout;
-mod px;
-mod shapes;
 mod tree;
 
 use crate::{
     gfx::{Color, Vertex},
+    px::Px,
+    shapes::{Extent, Point, Rect},
     traits::{CountingOutputIter, OutputIter},
 };
-use shapes::{Point, Rect};
 
-use self::shapes::Extent;
-pub use px::Px;
 /*
 Desired API (2021-11-06):
 
