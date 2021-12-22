@@ -1,11 +1,16 @@
 mod layout;
+mod px;
+mod shapes;
 mod tree;
 
 use crate::{
-    gfx::{Color, Extent, Point, Rect, Vertex},
+    gfx::{Color, Vertex},
     traits::{CountingOutputIter, OutputIter},
 };
+use shapes::{Point, Rect};
 
+use self::shapes::Extent;
+pub use px::Px;
 /*
 Desired API (2021-11-06):
 
@@ -36,9 +41,9 @@ v1: Panel, click to change color
 
 #[derive(Default)]
 pub struct Context {
-    cursor: Point<f32>,
-    window_size: Extent<f32>,
-    prev_cursor: Point<f32>,
+    cursor: Point,
+    window_size: Extent,
+    prev_cursor: Point,
     was_clicked: bool,
 }
 
@@ -52,11 +57,11 @@ impl Context {
         self.was_clicked = true;
     }
 
-    pub fn update_cursor(&mut self, x: f32, y: f32) {
+    pub fn update_cursor(&mut self, x: Px, y: Px) {
         self.cursor = Point::new(x, y);
     }
 
-    pub fn update_window_size(&mut self, width: f32, height: f32) {
+    pub fn update_window_size(&mut self, width: Px, height: Px) {
         self.window_size = Extent::new(width, height);
     }
 }
@@ -70,11 +75,11 @@ impl<'a> Builder<'a> {
     pub fn new(context: &'a mut Context) -> Self {
         Self {
             context,
-            region: Region::new(Color::rgba(0, 0, 0, 0), 0.0, LayoutDirection::LeftToRight),
+            region: Region::new(Color::rgba(0, 0, 0, 0), Px(0), LayoutDirection::LeftToRight),
         }
     }
 
-    pub fn cursor(&self) -> Point<f32> {
+    pub fn cursor(&self) -> Point {
         self.context.cursor
     }
 
@@ -92,7 +97,7 @@ impl<'a> Builder<'a> {
         index_buffer: &'a mut dyn OutputIter<u16>,
     ) {
         let bounds = Rect {
-            lower_left_corner: Point::default(),
+            point: Point::default(),
             extent: self.context.window_size,
         };
         self.region
@@ -109,13 +114,13 @@ pub enum LayoutDirection {
 #[derive(Clone)]
 pub struct Region {
     color: Color,
-    margin: f32,
+    margin: Px,
     layout_direction: LayoutDirection,
     children: Vec<Region>,
 }
 
 impl Region {
-    pub fn new(color: Color, margin: f32, layout_direction: LayoutDirection) -> Self {
+    pub fn new(color: Color, margin: Px, layout_direction: LayoutDirection) -> Self {
         Self {
             color,
             margin,
@@ -126,7 +131,7 @@ impl Region {
 
     pub fn with_children(
         color: Color,
-        margin: f32,
+        margin: Px,
         layout_direction: LayoutDirection,
         children: &[Region],
     ) -> Self {
@@ -144,7 +149,7 @@ impl Region {
 
     pub fn write_buffers(
         &self,
-        bounds: Rect<f32>,
+        bounds: Rect,
         vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
         index_buffer: &mut dyn OutputIter<u16>,
     ) {
@@ -153,16 +158,16 @@ impl Region {
         if !self.children.is_empty() {
             match self.layout_direction {
                 LayoutDirection::LeftToRight => {
-                    let total_margin_width = self.margin * (self.children.len() + 1) as f32;
+                    let total_margin_width = self.margin * (self.children.len() + 1) as i16;
                     let per_box_width =
-                        (bounds.width() - total_margin_width) / self.children.len() as f32;
+                        (bounds.width() - total_margin_width) / self.children.len() as i16;
 
                     let mut increasing_x = bounds.x() + self.margin;
 
                     let y = bounds.y() + self.margin;
-                    let height = bounds.height() - 2.0 * self.margin;
+                    let height = bounds.height() - 2 * self.margin;
 
-                    assert!(height > 0.0);
+                    assert!(height > 0);
 
                     for child in &self.children {
                         let child_bounds = Rect::new(increasing_x, y, per_box_width, height);
@@ -171,15 +176,15 @@ impl Region {
                     }
                 }
                 LayoutDirection::TopToBottom => {
-                    let total_margin_height = self.margin * (self.children.len() + 1) as f32;
+                    let total_margin_height = self.margin * (self.children.len() + 1) as i16;
                     let per_box_height =
-                        (bounds.height() - total_margin_height) / self.children.len() as f32;
+                        (bounds.height() - total_margin_height) / self.children.len() as i16;
 
                     // going bottom-up
                     let mut increasing_y = bounds.y() + self.margin;
 
                     let x = bounds.x() + self.margin;
-                    let width = bounds.width() - 2.0 * self.margin;
+                    let width = bounds.width() - 2 * self.margin;
 
                     for child in self.children.iter().rev() {
                         let child_bounds = Rect::new(x, increasing_y, width, per_box_height);
@@ -192,7 +197,7 @@ impl Region {
     }
 
     fn write_rect(
-        rect: Rect<f32>,
+        rect: Rect,
         color: Color,
         vertex_buffer: &mut dyn CountingOutputIter<Vertex>,
         index_buffer: &mut dyn OutputIter<u16>,
@@ -201,11 +206,11 @@ impl Region {
 
         for point in &rect.points() {
             vertex_buffer.push(Vertex {
-                position: *point,
+                position: (point.x.into(), point.y.into()),
                 color,
             });
         }
-        for index in &Rect::<f32>::INDICES {
+        for index in &Rect::INDICES {
             index_buffer.push(start + index);
         }
     }

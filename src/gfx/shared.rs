@@ -3,12 +3,7 @@ use std::{ffi::CStr, process::abort};
 use ash::vk;
 use lazy_static::lazy_static;
 
-use super::{
-    color::Color,
-    geometry::{Extent, Point},
-    recorder::Recorder,
-    vulkan::Vulkan,
-};
+use super::{color::Color, recorder::Recorder, vulkan::Vulkan};
 use crate::sys::{Library, PhysicalSize};
 
 pub const TRIANGLE_VERTEX_SHADER_SPIRV: &[u8] =
@@ -40,7 +35,7 @@ lazy_static! {
     pub static ref PIPELINE_LAYOUT: vk::PipelineLayout = {
         let push_constants = [vk::PushConstantRange {
             offset: 0,
-            size: std::mem::size_of::<Extent<f32>>() as u32,
+            size: std::mem::size_of::<Scale>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
@@ -52,8 +47,13 @@ lazy_static! {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vertex {
-    pub position: Point<f32>,
+    pub position: (f32, f32),
     pub color: Color,
+}
+
+pub struct Scale {
+    horizontal: f32,
+    vertical: f32,
 }
 
 impl Vertex {
@@ -75,7 +75,7 @@ impl Vertex {
             binding: 0,
             location: 1,
             format: vk::Format::R8G8B8A8_UNORM,
-            offset: std::mem::size_of::<Point<f32>>() as u32,
+            offset: std::mem::size_of::<(f32, f32)>() as u32,
         },
     ];
 }
@@ -161,9 +161,9 @@ pub fn record_command_buffer(
 
     cmd.set_scissor(&[viewport]);
 
-    let scale = Extent {
-        width: 2.0 / viewport.extent.width as f32,
-        height: 2.0 / viewport.extent.height as f32,
+    let scale = Scale {
+        vertical: 2.0 / viewport.extent.height as f32,
+        horizontal: 2.0 / viewport.extent.width as f32,
     };
 
     cmd.push_constants(layout, vk::ShaderStageFlags::VERTEX, 0, &scale);

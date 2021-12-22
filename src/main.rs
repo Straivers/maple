@@ -10,7 +10,7 @@ mod ui;
 use gfx::{Color, RendererWindow};
 use registry::named::{IdOps, StrOps};
 use sys::{ButtonState, Event, EventLoopControl, MouseButton, PhysicalSize};
-use ui::Region;
+use ui::{Px, Region};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -51,29 +51,37 @@ fn run(_cli_options: &CliOptions) {
         // create a box
         ui.region(Region::with_children(
             Color::rgb(0, 0, 0),
-            10.0,
+            Px(10),
             ui::LayoutDirection::LeftToRight,
             &[
                 Region::with_children(
                     Color::rgb(200, 200, 200),
-                    20.0,
+                    Px(20),
                     ui::LayoutDirection::LeftToRight,
                     &[Region::new(
                         Color::unpack(*registry.get_id(id).unwrap()),
-                        0.0,
+                        Px(0),
                         ui::LayoutDirection::LeftToRight,
                     )],
                 ),
                 Region::with_children(
                     Color::rgb(200, 200, 200),
-                    10.0,
+                    Px(10),
                     ui::LayoutDirection::TopToBottom,
                     &[
-                        Region::new(Color::rgb(255, 0, 0), 0.0, ui::LayoutDirection::LeftToRight),
-                        Region::new(Color::rgb(0, 255, 0), 0.0, ui::LayoutDirection::LeftToRight),
+                        Region::new(
+                            Color::rgb(255, 0, 0),
+                            Px(0),
+                            ui::LayoutDirection::LeftToRight,
+                        ),
+                        Region::new(
+                            Color::rgb(0, 255, 0),
+                            Px(0),
+                            ui::LayoutDirection::LeftToRight,
+                        ),
                         Region::new(
                             Color::rgb(0, 0, 255),
-                            0.0,
+                            Px(0),
                             ui::LayoutDirection::LeftToRight,
                         ),
                     ],
@@ -106,10 +114,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
                 return EventLoopControl::Stop;
             }
             Event::CursorMove { x_pos, y_pos } => {
-                ui.update_cursor(
-                    f32::from(x_pos),
-                    f32::from(window_size.height) - f32::from(y_pos),
-                );
+                ui.update_cursor(Px(x_pos), Px(window_size.height as i16) - Px(y_pos));
             }
             Event::MouseButton { button, state } => {
                 if button == MouseButton::Left && state == ButtonState::Pressed {
@@ -134,7 +139,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&mut ui::Builder)) 
             }
             Event::Resized { size } => {
                 window_size = size;
-                ui.update_window_size(f32::from(window_size.width), f32::from(window_size.height));
+                ui.update_window_size(Px(window_size.width as i16), Px(window_size.height as i16));
 
                 if window_size != PhysicalSize::default() {
                     let mut vertices = vec![];
