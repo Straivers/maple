@@ -2,6 +2,24 @@ use crate::{gfx::Color, px::Px, shapes::Extent};
 
 use super::tree::{Index, Tree};
 
+/// A simple widget that is a solid-colored rectangle. Useful for blocking out
+/// user interfaces or testing new layouts.
+///
+/// It can be given a strict size, a preferred size, or a preferred size within
+/// a size range.
+#[derive(Clone, Debug)]
+pub struct Block {
+    pub color: Color,
+    pub max_size: Extent,
+    pub min_size: Extent,
+    pub size_hint: Extent,
+}
+
+#[derive(Clone, Debug)]
+pub struct Column {
+    pub margin: Px
+}
+
 #[derive(Clone, Debug)]
 pub struct Panel {
     pub color: Color,
@@ -46,6 +64,7 @@ impl Panel {
 #[derive(Clone)]
 pub enum Widget {
     Panel(Panel),
+    Block(Block),
 }
 
 impl std::fmt::Debug for Widget {
@@ -58,6 +77,7 @@ impl std::fmt::Debug for Widget {
                 .field("min_extent", &panel.min_extent)
                 .field("max_extent", &panel.max_extent)
                 .finish(),
+            Self::Block(block) => block.fmt(f)
         }
     }
 }
@@ -88,6 +108,28 @@ impl WidgetTreeBuilder {
         (self.tree, index)
     }
 
+    pub fn block(
+        &mut self,
+        color: Color,
+        size_hint: Extent,
+        min_size: Option<Extent>,
+        max_size: Option<Extent>,
+    ) -> WidgetBuilderScope {
+        let min_size = if let Some(min) = min_size {
+            min
+        } else {
+            Extent::default()
+        };
+
+        let max_size = if let Some(max) = max_size {
+            max
+        } else {
+            Extent::MAX
+        };
+
+        self.new_child(Widget::Block(Block {color, size_hint, min_size, max_size }))
+    }
+
     pub fn panel(
         &mut self,
         color: Color,
@@ -95,19 +137,17 @@ impl WidgetTreeBuilder {
         min_extent: Option<Extent>,
         max_extent: Option<Extent>,
     ) -> WidgetBuilderScope {
-        let children_start = self.children_stack.len();
-        WidgetBuilderScope {
-            widget: Widget::Panel(Panel::new(color, margin, min_extent, max_extent)),
-            tree: &mut self.tree,
-            children_stack: &mut self.children_stack,
-            children_start,
-        }
+        self.new_child(Widget::Panel(Panel::new(color, margin, min_extent, max_extent)))
     }
 
     pub fn panel_fixed(&mut self, color: Color, margin: Px, size: Extent) -> WidgetBuilderScope {
+        self.new_child(Widget::Panel(Panel::new(color, margin, Some(size), Some(size))))
+    }
+    
+    fn new_child(&mut self, widget: Widget) -> WidgetBuilderScope {
         let children_start = self.children_stack.len();
         WidgetBuilderScope {
-            widget: Widget::Panel(Panel::fixed_size(color, margin, size)),
+            widget,
             tree: &mut self.tree,
             children_stack: &mut self.children_stack,
             children_start,
@@ -123,6 +163,28 @@ pub struct WidgetBuilderScope<'a> {
 }
 
 impl<'a> WidgetBuilderScope<'a> {
+    pub fn block(
+        &mut self,
+        color: Color,
+        size_hint: Extent,
+        min_size: Option<Extent>,
+        max_size: Option<Extent>,
+    ) -> WidgetBuilderScope {
+        let min_size = if let Some(min) = min_size {
+            min
+        } else {
+            Extent::default()
+        };
+
+        let max_size = if let Some(max) = max_size {
+            max
+        } else {
+            Extent::MAX
+        };
+
+        self.new_child(Widget::Block(Block {color, size_hint, min_size, max_size }))
+    }
+
     pub fn panel(
         &mut self,
         color: Color,
@@ -130,19 +192,17 @@ impl<'a> WidgetBuilderScope<'a> {
         min_extent: Option<Extent>,
         max_extent: Option<Extent>,
     ) -> WidgetBuilderScope {
-        let children_start = self.children_stack.len();
-        WidgetBuilderScope {
-            widget: Widget::Panel(Panel::new(color, margin, min_extent, max_extent)),
-            tree: &mut self.tree,
-            children_stack: self.children_stack,
-            children_start,
-        }
+        self.new_child(Widget::Panel(Panel::new(color, margin, min_extent, max_extent)))
     }
 
     pub fn panel_fixed(&mut self, color: Color, margin: Px, size: Extent) -> WidgetBuilderScope {
+        self.new_child(Widget::Panel(Panel::fixed_size(color, margin, size)))
+    }
+
+    fn new_child(&mut self, widget: Widget) -> WidgetBuilderScope {
         let children_start = self.children_stack.len();
         WidgetBuilderScope {
-            widget: Widget::Panel(Panel::fixed_size(color, margin, size)),
+            widget,
             tree: &mut self.tree,
             children_stack: &mut self.children_stack,
             children_start,

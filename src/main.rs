@@ -68,6 +68,7 @@ fn run(_cli_options: &CliOptions) {
                     Extent::new(Px(200), Px(50)),
                 );
                 panel2.panel_fixed(Color::rgb(0, 0, 200), Px(0), Extent::new(Px(150), Px(10)));
+                panel2.block(Color::rgb(0, 0, 0), Extent::new(Px(700), Px(20)), Some(Extent::new(Px(10), Px(10))), None);
             }
 
             panel.panel_fixed(

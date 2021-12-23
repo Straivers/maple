@@ -37,6 +37,17 @@ pub fn compute_layout(
     let children = widgets.children(root);
 
     match widget {
+        Widget::Block(block) => {
+            assert_eq!(children.len(), 0);
+
+            let width = block.min_size.width.max(block.size_hint.width.min(block.max_size.width.min(area.width())));
+            let height = block.min_size.height.max(block.size_hint.height.min(block.max_size.height.min(area.height())));
+
+            output.add(&Region {
+                rect: Rect::new(area.x(), area.y(), width, height),
+                color: block.color,
+            }, &[]).unwrap()
+        }
         Widget::Panel(panel) => {
             let max_area = Rect::new(
                 area.x(),
