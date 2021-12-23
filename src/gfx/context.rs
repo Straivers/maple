@@ -7,10 +7,7 @@ use super::{
     },
     vulkan::SwapchainData,
 };
-use crate::{
-    shapes::Extent,
-    sys::{Handle, PhysicalSize},
-};
+use crate::{shapes::Extent, sys::Handle};
 
 pub const FRAMES_IN_FLIGHT: usize = 2;
 pub const DEFAULT_VERTEX_BUFFER_SIZE: usize = 8192;

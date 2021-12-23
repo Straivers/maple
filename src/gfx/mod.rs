@@ -1,3 +1,6 @@
+mod canvas;
+pub use canvas::{Canvas, Draw, DrawStyled};
+
 mod color;
 pub use color::Color;
 

@@ -2,184 +2,95 @@
 //!
 //! All units are held in device-independent and DPI-scaled pixels.
 
-// use super::{
-//     px::Px,
-//     tree::{self, Tree},
-// };
+use crate::{
+    gfx::{Canvas, Color, Draw, DrawStyled},
+    px::Px,
+    shapes::Rect,
+};
 
-// #[derive(thiserror::Error, Debug)]
-// pub enum Error {
-//     #[error("Could not add a new layout node to the tree.")]
-//     TooManyNodes,
-// }
+use super::{
+    tree::{Index, Tree},
+    widgets::{Widget, WidgetTree},
+};
 
-// #[derive(Clone, Copy)]
-// pub enum YAlignment {
-//     None,
-//     /// ```
-//     /// ﹇
-//     /// A
-//     /// B
-//     /// C
-//     ///
-//     ///
-//     /// ﹈
-//     /// ```
-//     Top,
-//     /// ```
-//     /// ﹇
-//     ///
-//     ///
-//     /// A
-//     /// B
-//     /// C
-//     /// ﹈
-//     /// ```
-//     Bottom,
-//     /// ```
-//     /// ﹇
-//     ///
-//     /// A
-//     /// B
-//     /// C
-//     ///
-//     /// ﹈
-//     /// ```
-//     Center,
-//     /// ```
-//     /// ﹇
-//     ///
-//     /// A
-//     ///
-//     /// B
-//     ///
-//     /// C
-//     ///
-//     /// ﹈
-//     /// ```
-//     Even,
-// }
+#[derive(Clone, Debug)]
+pub struct Region {
+    rect: Rect,
+    color: Color,
+}
 
-// #[derive(Clone, Copy)]
-// pub enum XAlignment {
-//     None,
-//     /// `[A B C        ]`
-//     Left,
-//     /// `[        A B C]`
-//     Right,
-//     /// `[    A B C    ]`
-//     Center,
-//     /// `[  A   B   C  ]`
-//     Even,
-// }
+impl Draw<Region> for Canvas {
+    fn draw(&mut self, shape: &Region) {
+        self.draw_styled(&shape.rect, shape.color);
+    }
+}
 
-// #[derive(Clone, Copy)]
-// pub struct Alignment(u8);
+pub type LayoutTree = Tree<Region>;
 
-// impl Alignment {
-//     pub fn left() -> Self {
-//         Self(XAlignment::Left as u8)
-//     }
+pub fn compute_layout(
+    widgets: &WidgetTree,
+    root: Index<Widget>,
+    area: Rect,
+    output: &mut LayoutTree,
+) -> Index<Region> {
+    let widget = widgets.get(root);
+    let children = widgets.children(root);
 
-//     pub fn x_center() -> Self {
-//         Self(XAlignment::Center as u8)
-//     }
+    match widget {
+        Widget::Panel(panel) => {
+            let max_area = Rect::new(
+                area.x(),
+                area.y(),
+                panel.max_extent.width.min(area.width()),
+                panel.max_extent.height.min(area.height()),
+            );
 
-//     pub fn right() -> Self {
-//         Self(XAlignment::Right as u8)
-//     }
+            let mut child_regions = vec![];
 
-//     pub fn x_even() -> Self {
-//         Self(XAlignment::Even as u8)
-//     }
+            let mut max_child_width = Px(0);
 
-//     pub fn top() -> Self {
-//         Self((YAlignment::Top as u8) << 4)
-//     }
+            let mut child_area = Rect::new(
+                max_area.x() + panel.margin,
+                max_area.y() + panel.margin,
+                max_area.width() - 2 * panel.margin,
+                max_area.height() - 2 * panel.margin,
+            );
 
-//     pub fn y_center() -> Self {
-//         Self((YAlignment::Center as u8) << 4)
-//     }
+            for child in children {
+                let region = compute_layout(widgets, *child, child_area, output);
 
-//     pub fn bottom() -> Self {
-//         Self((YAlignment::Bottom as u8) << 4)
-//     }
+                let r = output.get(region);
+                *child_area.y_mut() += r.rect.height() + panel.margin;
+                *child_area.height_mut() -= r.rect.height() + panel.margin;
 
-//     pub fn y_even() -> Self {
-//         Self((YAlignment::Even as u8) << 4)
-//     }
+                if max_child_width < r.rect.width() {
+                    max_child_width = r.rect.width();
+                }
 
-//     pub fn new(x: XAlignment, y: YAlignment) -> Self {
-//         Self((x as u8) | (y as u8) << 4)
-//     }
+                child_regions.push(region);
+            }
 
-//     pub fn is_x(self) -> bool {
-//         (self.0 & 0x0F) != 0
-//     }
+            assert!(child_area.height() <= max_area.height());
 
-//     pub fn is_y(self) -> bool {
-//         (self.0 & 0xF0) != 0
-//     }
+            let panel_rect = Rect::new(
+                area.x(),
+                area.y(),
+                panel
+                    .min_extent
+                    .width
+                    .max(max_child_width + 2 * panel.margin),
+                panel.min_extent.height.max(child_area.y() - area.y()),
+            );
 
-//     pub fn x(self) -> Option<XAlignment> {
-//         match self.0 & 0x0F {
-//             1 => Some(XAlignment::Left),
-//             2 => Some(XAlignment::Center),
-//             3 => Some(XAlignment::Right),
-//             4 => Some(XAlignment::Even),
-//             _ => None,
-//         }
-//     }
-
-//     pub fn y(self) -> Option<YAlignment> {
-//         match self.0 & 0x0F {
-//             0x10 /*0x0F + 1*/ => Some(YAlignment::Top),
-//             0x11 /*0x0F + 2*/ => Some(YAlignment::Center),
-//             0x12 /*0x0F + 3*/ => Some(YAlignment::Bottom),
-//             0x13 /*0x0F + 4*/ => Some(YAlignment::Even),
-//             _ => None
-//         }
-//     }
-// }
-
-// #[derive(Clone, Copy)]
-// pub enum Kind {
-//     None,
-//     Row {
-//         alignment: YAlignment,
-//         margin: Px,
-//     },
-//     Column {
-//         alignment: XAlignment,
-//         margin: Px,
-//     },
-//     Flex {
-//         alignment: Alignment,
-//         vertical_margin: Px,
-//         horizontal_margin: Px,
-//     },
-// }
-
-// impl Default for Kind {
-//     fn default() -> Self {
-//         Self::None
-//     }
-// }
-
-// #[derive(Clone, Copy)]
-// pub struct Layout {
-//     widget_id: u16,
-//     min_extent: Extent<Px>,
-//     max_extent: Extent<Px>,
-//     layout: Kind,
-// }
-
-// #[derive(Clone, Copy)]
-// pub struct Region {
-//     widget_id: u16,
-//     bounds: Rect<Px>,
-// }
-
-// pub fn compute_layout(soft_bounds: Rect<Px>, tree: &tree::Tree<Layout>, regions: &mut tree::Tree<Region>) {
-//     todo!()
-// }
+            output
+                .add(
+                    &Region {
+                        rect: panel_rect,
+                        color: panel.color,
+                    },
+                    &child_regions,
+                )
+                .unwrap()
+        }
+    }
+}

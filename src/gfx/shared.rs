@@ -52,7 +52,11 @@ pub struct Vertex {
 }
 
 pub struct Scale {
+    #[allow(dead_code)]
+    // Read by shader, so it's ok if this variable isn't read on the CPU
     horizontal: f32,
+    #[allow(dead_code)]
+    // Read by shader, so it's ok if this variable isn't read on the CPU
     vertical: f32,
 }
 

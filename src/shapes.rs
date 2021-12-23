@@ -38,12 +38,14 @@ pub struct Extent {
 }
 
 impl Extent {
-    pub fn new(width: Px, height: Px) -> Self {
+    pub const MAX: Self = Self::new(Px::MAX, Px::MAX);
+
+    pub const fn new(width: Px, height: Px) -> Self {
         Self { width, height }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub point: Point,
     pub extent: Extent,
@@ -52,10 +54,17 @@ pub struct Rect {
 impl Rect {
     pub const INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
-    pub fn new(x: Px, y: Px, width: Px, height: Px) -> Self {
+    pub const fn new(x: Px, y: Px, width: Px, height: Px) -> Self {
         Self {
             point: Point { x, y },
             extent: Extent { width, height },
+        }
+    }
+
+    pub const fn from_extent(x: Px, y: Px, extent: Extent) -> Self {
+        Self {
+            point: Point { x, y },
+            extent,
         }
     }
 
@@ -67,12 +76,20 @@ impl Rect {
         self.point.y
     }
 
+    pub fn y_mut(&mut self) -> &mut Px {
+        &mut self.point.y
+    }
+
     pub fn width(&self) -> Px {
         self.extent.width
     }
 
     pub fn height(&self) -> Px {
         self.extent.height
+    }
+
+    pub fn height_mut(&mut self) -> &mut Px {
+        &mut self.extent.height
     }
 
     pub fn points(&self) -> [Point; 4] {
@@ -91,5 +108,16 @@ impl Rect {
                 y: self.y(),
             },
         ]
+    }
+}
+
+impl std::fmt::Debug for Rect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Rect")
+            .field("x", &self.point.x)
+            .field("y", &self.point.y)
+            .field("width", &self.extent.width)
+            .field("height", &self.extent.height)
+            .finish()
     }
 }

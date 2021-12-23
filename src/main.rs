@@ -9,12 +9,14 @@ mod ui;
 
 // use clap::App;
 
-use gfx::{Color, RendererWindow};
+use gfx::{Canvas, Color, Draw, RendererWindow};
 use px::Px;
 use registry::named::{IdOps, StrOps};
-use shapes::Extent;
-use sys::{ButtonState, Event, EventLoopControl, InputState, MouseButton, PhysicalSize};
-use ui::Region;
+use shapes::{Extent, Rect};
+use sys::{Event, EventLoopControl, InputState, MouseButton};
+use ui::{compute_layout, LayoutTree, Region, WidgetTreeBuilder};
+
+use crate::ui::Index;
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -47,57 +49,64 @@ fn run(_cli_options: &CliOptions) {
         .insert("color", Color::random_rgb().pack())
         .unwrap();
 
-    spawn_window("Title 1", |input, ui| {
+    spawn_window("Title 1", |input, canvas| {
         if input.is_pressed(MouseButton::Left) {
             *registry.get_mut_id(id).unwrap() = Color::random_rgb().pack();
         }
 
-        // create a box
-        ui.region(Region::with_children(
-            Color::rgb(0, 0, 0),
-            Px(10),
-            ui::LayoutDirection::LeftToRight,
-            &[
-                Region::with_children(
-                    Color::rgb(200, 200, 200),
-                    Px(20),
-                    ui::LayoutDirection::LeftToRight,
-                    &[Region::new(
-                        Color::unpack(*registry.get_id(id).unwrap()),
-                        Px(0),
-                        ui::LayoutDirection::LeftToRight,
-                    )],
-                ),
-                Region::with_children(
-                    Color::rgb(200, 200, 200),
-                    Px(10),
-                    ui::LayoutDirection::TopToBottom,
-                    &[
-                        Region::new(
-                            Color::rgb(255, 0, 0),
-                            Px(0),
-                            ui::LayoutDirection::LeftToRight,
-                        ),
-                        Region::new(
-                            Color::rgb(0, 255, 0),
-                            Px(0),
-                            ui::LayoutDirection::LeftToRight,
-                        ),
-                        Region::new(
-                            Color::rgb(0, 0, 255),
-                            Px(0),
-                            ui::LayoutDirection::LeftToRight,
-                        ),
-                    ],
-                ),
-            ],
-        ));
+        let mut widgets = WidgetTreeBuilder::new();
+
+        {
+            let mut panel = widgets.panel(Color::rgb(100, 0, 0), Px(10), None, None);
+
+            {
+                let mut panel2 = panel.panel(Color::rgb(200, 200, 200), Px(10), None, None);
+                panel2.panel_fixed(Color::rgb(0, 100, 0), Px(0), Extent::new(Px(100), Px(50)));
+                panel2.panel_fixed(
+                    Color::unpack(*registry.get_id(id).unwrap()),
+                    Px(0),
+                    Extent::new(Px(200), Px(50)),
+                );
+                panel2.panel_fixed(Color::rgb(0, 0, 200), Px(0), Extent::new(Px(150), Px(10)));
+            }
+
+            panel.panel_fixed(
+                Color::rgb(130, 133, 133),
+                Px(0),
+                Extent::new(Px(400), Px(150)),
+            );
+        }
+
+        widgets.panel_fixed(
+            Color::rgb(200, 200, 250),
+            Px(0),
+            Extent::new(Px(100), Px(200)),
+        );
+
+        let (widget_tree, root_widget) = widgets.build();
+
+        let mut layout = LayoutTree::new();
+        let layout_root = compute_layout(
+            &widget_tree,
+            root_widget,
+            Rect::from_extent(Px(0), Px(0), canvas.size()),
+            &mut layout,
+        );
+
+        fn draw(tree: &LayoutTree, root: Index<Region>, canvas: &mut Canvas) {
+            canvas.draw(tree.get(root));
+            for child in tree.children(root) {
+                draw(tree, *child, canvas);
+            }
+        }
+
+        draw(&layout, layout_root, canvas);
     });
 
     registry.remove("color").unwrap();
 }
 
-pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut ui::Builder)) {
+pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut Canvas)) {
     let mut context = RendererWindow::new();
     let mut renderer = gfx::Executor::new();
     let mut window_size = Extent::default();
@@ -121,15 +130,13 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut u
                 window_size = size;
 
                 if window_size != Extent::default() {
-                    let mut vertices = vec![];
-                    let mut indices = vec![];
+                    let mut canvas = Canvas::new(window_size);
 
-                    let mut builder = ui::Builder::new();
+                    ui_callback(&input, &mut canvas);
 
-                    ui_callback(&input, &mut builder);
-                    builder.build(window_size, &mut vertices, &mut indices);
-
-                    if let Some(request) = context.draw(window_size, &vertices, &indices) {
+                    if let Some(request) =
+                        context.draw(window_size, &canvas.vertices(), &canvas.indices())
+                    {
                         let _ = renderer.execute(&request);
                     }
                 }
@@ -138,15 +145,13 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut u
             }
             Event::Update {} => {
                 if window_size != Extent::default() {
-                    let mut vertices = vec![];
-                    let mut indices = vec![];
+                    let mut canvas = Canvas::new(window_size);
 
-                    let mut builder = ui::Builder::new();
+                    ui_callback(&input, &mut canvas);
 
-                    ui_callback(&input, &mut builder);
-                    builder.build(window_size, &mut vertices, &mut indices);
-
-                    if let Some(request) = context.draw(window_size, &vertices, &indices) {
+                    if let Some(request) =
+                        context.draw(window_size, &canvas.vertices(), &canvas.indices())
+                    {
                         let _ = renderer.execute(&request);
                     }
                 }

@@ -1,55 +1,36 @@
+use std::marker::PhantomData;
+
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
     #[error("Could not add a new layout node to the tree.")]
     TooManyNodes,
     #[error("Attempted to add more than u16::MAX children to a node in the tree.")]
     TooManyChildren,
-    #[error("A node can only have one parent.")]
-    MoreThanOneParent,
 }
 
-#[derive(Clone, Copy)]
-pub struct Node<Payload>
-where
-    Payload: Clone,
-{
-    payload: Payload,
-    first_child: Index,
-    next: Index,
-}
+#[derive(Debug, PartialEq)]
+#[repr(transparent)]
+pub struct Index<Payload>(u16, PhantomData<Payload>);
 
-impl<Payload> Node<Payload>
-where
-    Payload: Clone,
-{
-    fn new(payload: Payload) -> Self {
-        Self {
-            payload,
-            first_child: Index::null(),
-            next: Index::null(),
-        }
+impl<Payload> Clone for Index<Payload> {
+    fn clone(&self) -> Self {
+        Self(self.0, PhantomData)
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(transparent)]
-pub struct Index(u16);
+impl<Payload> Copy for Index<Payload> {}
 
-impl Default for Index {
+impl<Payload> Default for Index<Payload> {
     fn default() -> Self {
         Self::null()
     }
 }
 
-impl Index {
-    const MAX: Index = Index(u16::MAX - 1);
+impl<Payload> Index<Payload> {
+    const MAX: Self = Self(u16::MAX - 1, PhantomData);
 
     pub fn null() -> Self {
-        Index(u16::MAX)
-    }
-
-    pub fn is_null(self) -> bool {
-        self == Self::null()
+        Self(u16::MAX, PhantomData)
     }
 }
 
@@ -77,7 +58,7 @@ where
 
 impl<Payload> Tree<Payload>
 where
-    Payload: Clone,
+    Payload: Clone + std::fmt::Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -87,15 +68,11 @@ where
         }
     }
 
-    pub fn get(&self, node: Index) -> &Payload {
+    pub fn get(&self, node: Index<Payload>) -> &Payload {
         &self.data[node.0 as usize]
     }
 
-    pub fn get_mut(&mut self, node: Index) -> &mut Payload {
-        &mut self.data[node.0 as usize]
-    }
-
-    pub fn children(&self, node: Index) -> &[Index] {
+    pub fn children(&self, node: Index<Payload>) -> &[Index<Payload>] {
         if self.children[node.0 as usize] == 0 {
             &[]
         } else {
@@ -114,13 +91,17 @@ where
     }
 
     pub fn reserve(&mut self, additional: usize) {
-        let actual = additional.min(Index::MAX.0 as usize - self.data.len());
+        let actual = additional.min(Index::<Payload>::MAX.0 as usize - self.data.len());
         self.data.reserve(actual);
         self.children.reserve(actual);
     }
 
-    pub fn add(&mut self, payload: Payload, children: &[Index]) -> Result<Index, Error> {
-        if self.data.len() > Index::MAX.0 as usize {
+    pub fn add(
+        &mut self,
+        payload: &Payload,
+        children: &[Index<Payload>],
+    ) -> Result<Index<Payload>, Error> {
+        if self.data.len() > Index::<Payload>::MAX.0 as usize {
             return Err(Error::TooManyNodes);
         }
 
@@ -151,10 +132,36 @@ where
                 .len()
                 .try_into()
                 .map_err(|_| Error::TooManyNodes)?,
+            PhantomData,
         );
-        self.data.push(payload);
+        self.data.push(payload.clone());
         self.children.push(first_child);
         Ok(index)
+    }
+
+    #[allow(dead_code)]
+    #[cfg(debug_assertions)]
+    pub fn print(&self, root: Index<Payload>) {
+        println!("Tree<{:?}>", std::any::type_name::<Payload>());
+        self.print_impl(root, 0);
+    }
+
+    #[allow(dead_code)]
+    #[cfg(debug_assertions)]
+    fn print_impl(&self, root: Index<Payload>, depth: usize) {
+        fn indent(count: usize) {
+            for _ in 0..count {
+                print!("\t");
+            }
+        }
+
+        indent(depth);
+        println!("{:?}", self.get(root));
+
+        let children = self.children(root);
+        for child in children {
+            self.print_impl(*child, depth + 1);
+        }
     }
 }
 
@@ -190,11 +197,11 @@ mod tests {
             4
         */
 
-        let four = tree.add(4, &[])?;
-        let three = tree.add(3, &[])?;
-        let two = tree.add(2, &[])?;
-        let one = tree.add(1, &[two])?;
-        let zero = tree.add(0, &[one, three, four])?;
+        let four = tree.add(&4, &[])?;
+        let three = tree.add(&3, &[])?;
+        let two = tree.add(&2, &[])?;
+        let one = tree.add(&1, &[two])?;
+        let zero = tree.add(&0, &[one, three, four])?;
 
         assert_eq!(*tree.get(zero), 0);
         assert_eq!(*tree.get(one), 1);
@@ -214,13 +221,13 @@ mod tests {
     #[test]
     fn capacity() -> Result<(), Error> {
         let mut tree = Tree::new();
-        tree.reserve(Index::MAX.0 as usize);
+        tree.reserve(Index::<u16>::MAX.0 as usize);
 
-        for i in 0..Index::MAX.0 + 1 {
-            tree.add(i, &[])?;
+        for i in 0..Index::<u16>::MAX.0 + 1 {
+            tree.add(&i, &[])?;
         }
 
-        let fail = tree.add(Index::MAX.0, &[]);
+        let fail = tree.add(&Index::<u16>::MAX.0, &[]);
         assert_eq!(fail, Err(Error::TooManyNodes));
         Ok(())
     }

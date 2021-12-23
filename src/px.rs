@@ -10,6 +10,10 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, S
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Px(pub i16);
 
+impl Px {
+    pub const MAX: Self = Px(i16::MAX);
+}
+
 macro_rules! impl_bin_op {
     ($trait:ident, $lhs: ty, $rhs:ty, $func:ident, $extract_left:expr, $extract_right:expr) => {
         impl $trait<$rhs> for $lhs {
