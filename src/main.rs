@@ -9,14 +9,12 @@ mod ui;
 
 // use clap::App;
 
-use gfx::{Canvas, Color, Draw, RendererWindow};
+use gfx::{Canvas, Color, DrawStyled, RendererWindow};
 use px::Px;
 use registry::named::{IdOps, StrOps};
-use shapes::{Extent, Rect};
+use shapes::Extent;
 use sys::{Event, EventLoopControl, InputState, MouseButton};
-use ui::{compute_layout, LayoutTree, Region, WidgetTreeBuilder};
-
-use crate::ui::Index;
+use ui::{DrawCommand, WidgetTreeBuilder};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -55,53 +53,56 @@ fn run(_cli_options: &CliOptions) {
         }
 
         let mut widgets = WidgetTreeBuilder::new();
-
         {
-            let mut panel = widgets.panel(Color::rgb(100, 0, 0), Px(10), None, None);
-
+            let mut column = widgets.layout_columns(Px(0));
             {
-                let mut panel2 = panel.panel(Color::rgb(200, 200, 200), Px(10), None, None);
-                panel2.panel_fixed(Color::rgb(0, 100, 0), Px(0), Extent::new(Px(100), Px(50)));
-                panel2.panel_fixed(
-                    Color::unpack(*registry.get_id(id).unwrap()),
-                    Px(0),
-                    Extent::new(Px(200), Px(50)),
+                let mut panel = column.panel(Color::rgb(100, 0, 0), Px(10), None, None);
+
+                {
+                    let mut column2 = panel.layout_columns(Px(10));
+                    column2.panel_fixed(Color::rgb(0, 100, 0), Px(0), Extent::new(Px(100), Px(50)));
+                    column2.panel_fixed(
+                        Color::unpack(*registry.get_id(id).unwrap()),
+                        Px(0),
+                        Extent::new(Px(200), Px(50)),
+                    );
+                    column2.panel_fixed(Color::rgb(0, 0, 200), Px(0), Extent::new(Px(150), Px(10)));
+                    column2.block(
+                        Color::rgb(0, 0, 0),
+                        Extent::new(Px(700), Px(20)),
+                        Some(Extent::new(Px(10), Px(10))),
+                        None,
+                    );
+                }
+                panel.block(
+                    Color::rgb(130, 133, 133),
+                    Extent::new(Px(400), Px(150)),
+                    None,
+                    None,
                 );
-                panel2.panel_fixed(Color::rgb(0, 0, 200), Px(0), Extent::new(Px(150), Px(10)));
-                panel2.block(Color::rgb(0, 0, 0), Extent::new(Px(700), Px(20)), Some(Extent::new(Px(10), Px(10))), None);
             }
 
-            panel.panel_fixed(
-                Color::rgb(130, 133, 133),
-                Px(0),
-                Extent::new(Px(400), Px(150)),
+            column.block(
+                Color::rgb(200, 200, 250),
+                Extent::new(Px(100), Px(200)),
+                None,
+                None,
             );
         }
 
-        widgets.panel_fixed(
-            Color::rgb(200, 200, 250),
-            Px(0),
-            Extent::new(Px(100), Px(200)),
-        );
-
         let (widget_tree, root_widget) = widgets.build();
 
-        let mut layout = LayoutTree::new();
-        let layout_root = compute_layout(
-            &widget_tree,
+        let mut layout_buffer = vec![];
+        widget_tree.compute_layout(root_widget, canvas.size(), &mut layout_buffer);
+
+        widget_tree.build_draw_command_list(
             root_widget,
-            Rect::from_extent(Px(0), Px(0), canvas.size()),
-            &mut layout,
-        );
-
-        fn draw(tree: &LayoutTree, root: Index<Region>, canvas: &mut Canvas) {
-            canvas.draw(tree.get(root));
-            for child in tree.children(root) {
-                draw(tree, *child, canvas);
-            }
-        }
-
-        draw(&layout, layout_root, canvas);
+            &layout_buffer,
+            canvas.size(),
+            &mut |command| match command {
+                DrawCommand::Rect { rect, color } => canvas.draw_styled(rect, *color),
+            },
+        )
     });
 
     registry.remove("color").unwrap();
@@ -117,7 +118,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut C
         match event {
             Event::Created { size } => {
                 window_size = size;
-                control.set_min_size(Extent::new(Px(720), Px(480)));
+                control.set_min_size(Extent::new(Px(100), Px(100)));
                 context.bind(control.handle(), size);
             }
             Event::Destroyed {} => {}

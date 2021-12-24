@@ -32,6 +32,10 @@ impl<Payload> Index<Payload> {
     pub fn null() -> Self {
         Self(u16::MAX, PhantomData)
     }
+
+    pub fn get(self) -> usize {
+        self.0 as usize
+    }
 }
 
 pub struct Tree<Payload>
@@ -68,6 +72,10 @@ where
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
     pub fn get(&self, node: Index<Payload>) -> &Payload {
         &self.data[node.0 as usize]
     }
@@ -82,18 +90,6 @@ where
 
             unsafe { std::slice::from_raw_parts(start.cast(), len) }
         }
-    }
-
-    pub fn clear(&mut self) {
-        self.data.clear();
-        self.children.clear();
-        self.children_array.truncate(1);
-    }
-
-    pub fn reserve(&mut self, additional: usize) {
-        let actual = additional.min(Index::<Payload>::MAX.0 as usize - self.data.len());
-        self.data.reserve(actual);
-        self.children.reserve(actual);
     }
 
     pub fn add(
@@ -221,7 +217,6 @@ mod tests {
     #[test]
     fn capacity() -> Result<(), Error> {
         let mut tree = Tree::new();
-        tree.reserve(Index::<u16>::MAX.0 as usize);
 
         for i in 0..Index::<u16>::MAX.0 + 1 {
             tree.add(&i, &[])?;

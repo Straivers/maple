@@ -31,7 +31,7 @@ pub struct Offset {
     pub y: Px,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Extent {
     pub width: Px,
     pub height: Px,
