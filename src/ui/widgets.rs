@@ -41,9 +41,10 @@ trait Widget {
 
 #[derive(Clone)]
 pub enum WidgetStorage {
+    Column(Column),
+    Row(Row),
     Panel(Panel),
     Block(Block),
-    Column(Column),
 }
 
 impl Widget for WidgetStorage {
@@ -55,9 +56,10 @@ impl Widget for WidgetStorage {
         output: &mut [Option<Layout>],
     ) {
         match self {
+            WidgetStorage::Column(column) => column.compute_layout(index, area, tree, output),
+            WidgetStorage::Row(row) => row.compute_layout(index, area, tree, output),
             WidgetStorage::Panel(panel) => panel.compute_layout(index, area, tree, output),
             WidgetStorage::Block(block) => block.compute_layout(index, area, tree, output),
-            WidgetStorage::Column(column) => column.compute_layout(index, area, tree, output),
         }
     }
 
@@ -72,14 +74,17 @@ impl Widget for WidgetStorage {
         F: FnMut(&DrawCommand),
     {
         match self {
+            WidgetStorage::Column(column) => {
+                column.build_draw_command_list(index, tree, layout, area, callback)
+            }
+            WidgetStorage::Row(row) => {
+                row.build_draw_command_list(index, tree, layout, area, callback)
+            }
             WidgetStorage::Panel(panel) => {
                 panel.build_draw_command_list(index, tree, layout, area, callback)
             }
             WidgetStorage::Block(block) => {
                 block.build_draw_command_list(index, tree, layout, area, callback)
-            }
-            WidgetStorage::Column(column) => {
-                column.build_draw_command_list(index, tree, layout, area, callback)
             }
         }
     }
@@ -88,8 +93,9 @@ impl Widget for WidgetStorage {
 impl std::fmt::Debug for WidgetStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Panel(panel) => panel.fmt(f),
             Self::Column(column) => column.fmt(f),
+            Self::Row(row) => row.fmt(f),
+            Self::Panel(panel) => panel.fmt(f),
             Self::Block(block) => block.fmt(f),
         }
     }
@@ -259,6 +265,80 @@ impl Widget for Column {
             );
             advancing_y += layout[child_index.get()].as_ref().unwrap().size.height;
             advancing_y += self.margin;
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Row {
+    pub margin: Px,
+}
+
+impl Widget for Row {
+    fn compute_layout(
+        &self,
+        index: Index<WidgetStorage>,
+        area: Extent,
+        tree: &WidgetTree,
+        output: &mut [Option<Layout>],
+    ) {
+        let mut advancing_x = Px(0);
+        let mut max_child_height = Px(0);
+        for child in tree.children(index) {
+            tree.get(*child).compute_layout(
+                *child,
+                Extent::new(area.width - advancing_x, area.height),
+                tree,
+                output,
+            );
+
+            let child_layout = output[child.get()].as_ref().unwrap();
+            advancing_x += child_layout.size.width + self.margin;
+            if max_child_height < child_layout.size.height {
+                max_child_height = child_layout.size.height
+            }
+        }
+
+        // Compensate for over margin
+        if advancing_x > Px(0) {
+            advancing_x -= self.margin;
+        }
+
+        assert!(advancing_x <= area.width);
+
+        let final_size = Extent::new(advancing_x, max_child_height);
+
+        output[index.get()] = Some(Layout { size: final_size });
+    }
+
+    fn build_draw_command_list<F>(
+        &self,
+        index: Index<WidgetStorage>,
+        tree: &WidgetTree,
+        layout: &[Option<Layout>],
+        area: Rect,
+        callback: &mut F,
+    ) where
+        F: FnMut(&DrawCommand),
+    {
+        let mut advancing_x = area.x();
+
+        for child_index in tree.children(index) {
+            let child = tree.get(*child_index);
+            child.build_draw_command_list(
+                *child_index,
+                tree,
+                layout,
+                Rect::new(
+                    advancing_x,
+                    area.y(),
+                    area.width() - advancing_x,
+                    area.height(),
+                ),
+                callback,
+            );
+            advancing_x += layout[child_index.get()].as_ref().unwrap().size.width;
+            advancing_x += self.margin;
         }
     }
 }

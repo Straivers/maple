@@ -1,7 +1,7 @@
 use crate::{gfx::Color, px::Px, shapes::Extent};
 
 use super::{
-    widgets::{Block, Column, Panel, WidgetStorage, WidgetTree},
+    widgets::{Block, Column, Panel, Row, WidgetStorage, WidgetTree},
     Index,
 };
 
@@ -31,6 +31,10 @@ impl WidgetTreeBuilder {
 
     pub fn layout_columns(&mut self, margin: Px) -> WidgetBuilderScope {
         self.new_child(WidgetStorage::Column(Column { margin }))
+    }
+
+    pub fn layout_rows(&mut self, margin: Px) -> WidgetBuilderScope {
+        self.new_child(WidgetStorage::Row(Row { margin }))
     }
 
     pub fn panel(
@@ -90,9 +94,12 @@ impl<'a> WidgetBuilderScope<'a> {
             max_size,
         }))
     }
-
     pub fn layout_columns(&mut self, margin: Px) -> WidgetBuilderScope {
         self.new_child(WidgetStorage::Column(Column { margin }))
+    }
+
+    pub fn layout_rows(&mut self, margin: Px) -> WidgetBuilderScope {
+        self.new_child(WidgetStorage::Row(Row { margin }))
     }
 
     pub fn panel(

@@ -82,12 +82,27 @@ fn run(_cli_options: &CliOptions) {
                 );
             }
 
-            column.block(
-                Color::rgb(200, 200, 250),
-                Extent::new(Px(100), Px(200)),
-                None,
-                None,
-            );
+            {
+                let mut row = column.layout_rows(Px(10));
+                row.block(
+                    Color::rgb(200, 200, 250),
+                    Extent::new(Px(100), Px(200)),
+                    None,
+                    None,
+                );
+                row.block(
+                    Color::rgb(100, 100, 255),
+                    Extent::new(Px(200), Px(100)),
+                    None,
+                    None,
+                );
+                row.block(
+                    Color::rgb(50, 50, 255),
+                    Extent::new(Px(200), Px(100)),
+                    None,
+                    None,
+                );
+            }
         }
 
         let (widget_tree, root_widget) = widgets.build();
