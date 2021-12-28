@@ -1,13 +1,13 @@
 use crate::{gfx::Color, px::Px, shapes::Extent};
 
 use super::{
-    widgets::{Block, Column, Panel, Row, WidgetStorage, WidgetTree},
+    widgets::{Block, Column, Panel, Row, Widget, WidgetTree},
     Index,
 };
 
 pub struct WidgetTreeBuilder {
     tree: WidgetTree,
-    children_stack: Vec<Index<WidgetStorage>>,
+    children_stack: Vec<Index<Widget>>,
 }
 
 impl WidgetTreeBuilder {
@@ -18,11 +18,11 @@ impl WidgetTreeBuilder {
         }
     }
 
-    pub fn build(mut self) -> (WidgetTree, Index<WidgetStorage>) {
+    pub fn build(mut self) -> (WidgetTree, Index<Widget>) {
         let index = self
             .tree
             .add(
-                &WidgetStorage::Panel(Panel::new(Color::rgb(0, 0, 0), Px(0), None, None)),
+                &Widget::Panel(Panel::new(Color::rgb(0, 0, 0), Px(0), None, None)),
                 &self.children_stack,
             )
             .unwrap();
@@ -30,11 +30,11 @@ impl WidgetTreeBuilder {
     }
 
     pub fn layout_columns(&mut self, margin: Px) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Column(Column { margin }))
+        self.new_child(Widget::Column(Column { margin }))
     }
 
     pub fn layout_rows(&mut self, margin: Px) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Row(Row { margin }))
+        self.new_child(Widget::Row(Row { margin }))
     }
 
     pub fn panel(
@@ -44,12 +44,12 @@ impl WidgetTreeBuilder {
         min_extent: Option<Extent>,
         max_extent: Option<Extent>,
     ) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Panel(Panel::new(
+        self.new_child(Widget::Panel(Panel::new(
             color, margin, min_extent, max_extent,
         )))
     }
 
-    fn new_child(&mut self, widget: WidgetStorage) -> WidgetBuilderScope {
+    fn new_child(&mut self, widget: Widget) -> WidgetBuilderScope {
         let children_start = self.children_stack.len();
         WidgetBuilderScope {
             widget,
@@ -61,9 +61,9 @@ impl WidgetTreeBuilder {
 }
 
 pub struct WidgetBuilderScope<'a> {
-    widget: WidgetStorage,
+    widget: Widget,
     tree: &'a mut WidgetTree,
-    children_stack: &'a mut Vec<Index<WidgetStorage>>,
+    children_stack: &'a mut Vec<Index<Widget>>,
     children_start: usize,
 }
 
@@ -87,7 +87,7 @@ impl<'a> WidgetBuilderScope<'a> {
             Extent::MAX
         };
 
-        self.new_child(WidgetStorage::Block(Block {
+        self.new_child(Widget::Block(Block {
             color,
             size: size_hint,
             min_size,
@@ -95,11 +95,11 @@ impl<'a> WidgetBuilderScope<'a> {
         }))
     }
     pub fn layout_columns(&mut self, margin: Px) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Column(Column { margin }))
+        self.new_child(Widget::Column(Column { margin }))
     }
 
     pub fn layout_rows(&mut self, margin: Px) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Row(Row { margin }))
+        self.new_child(Widget::Row(Row { margin }))
     }
 
     pub fn panel(
@@ -109,16 +109,16 @@ impl<'a> WidgetBuilderScope<'a> {
         min_extent: Option<Extent>,
         max_extent: Option<Extent>,
     ) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Panel(Panel::new(
+        self.new_child(Widget::Panel(Panel::new(
             color, margin, min_extent, max_extent,
         )))
     }
 
     pub fn panel_fixed(&mut self, color: Color, margin: Px, size: Extent) -> WidgetBuilderScope {
-        self.new_child(WidgetStorage::Panel(Panel::fixed_size(color, margin, size)))
+        self.new_child(Widget::Panel(Panel::fixed_size(color, margin, size)))
     }
 
-    fn new_child(&mut self, widget: WidgetStorage) -> WidgetBuilderScope {
+    fn new_child(&mut self, widget: Widget) -> WidgetBuilderScope {
         let children_start = self.children_stack.len();
         WidgetBuilderScope {
             widget,

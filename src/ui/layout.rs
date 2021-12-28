@@ -4,12 +4,17 @@ use crate::{px::Px, shapes::Extent};
 
 use super::{
     tree::Index,
-    widgets::{Block, Column, Layout, Panel, Row, Visitor, WidgetStorage, WidgetTree},
+    widgets::{Block, Column, Panel, Row, Visitor, Widget, WidgetTree},
 };
+
+#[derive(Clone, Debug, Default)]
+pub struct Layout {
+    pub size: Extent,
+}
 
 pub fn compute_layout(
     tree: &WidgetTree,
-    root: Index<WidgetStorage>,
+    root: Index<Widget>,
     area: Extent,
     output: &mut Vec<Option<Layout>>,
 ) {
@@ -25,18 +30,18 @@ struct State<'a> {
 
 impl<'a> State<'a> {
     #[inline(always)]
-    fn visit(&mut self, index: Index<WidgetStorage>, area: Extent) {
+    fn visit(&mut self, index: Index<Widget>, area: Extent) {
         match self.tree.get(index) {
-            WidgetStorage::Column(column) => self.visit_column(index, column, area),
-            WidgetStorage::Row(row) => self.visit_row(index, row, area),
-            WidgetStorage::Panel(panel) => self.visit_panel(index, panel, area),
-            WidgetStorage::Block(block) => self.visit_block(index, block, area),
+            Widget::Column(column) => self.visit_column(index, column, area),
+            Widget::Row(row) => self.visit_row(index, row, area),
+            Widget::Panel(panel) => self.visit_panel(index, panel, area),
+            Widget::Block(block) => self.visit_block(index, block, area),
         }
     }
 }
 
 impl<'a> Visitor<Extent> for State<'a> {
-    fn visit_column(&mut self, index: Index<WidgetStorage>, column: &Column, area: Extent) {
+    fn visit_column(&mut self, index: Index<Widget>, column: &Column, area: Extent) {
         let mut advancing_y = Px(0);
         let mut max_child_width = Px(0);
         for child in self.tree.children(index) {
@@ -61,7 +66,7 @@ impl<'a> Visitor<Extent> for State<'a> {
         self.output[index.get()] = Some(Layout { size: final_size });
     }
 
-    fn visit_row(&mut self, index: Index<WidgetStorage>, row: &Row, area: Extent) {
+    fn visit_row(&mut self, index: Index<Widget>, row: &Row, area: Extent) {
         let mut advancing_x = Px(0);
         let mut max_child_height = Px(0);
         for child in self.tree.children(index) {
@@ -86,7 +91,7 @@ impl<'a> Visitor<Extent> for State<'a> {
         self.output[index.get()] = Some(Layout { size: final_size });
     }
 
-    fn visit_block(&mut self, index: Index<WidgetStorage>, block: &Block, area: Extent) {
+    fn visit_block(&mut self, index: Index<Widget>, block: &Block, area: Extent) {
         let width = max(
             block.min_size.width,
             min(block.size.width, min(block.max_size.width, area.width)),
@@ -102,7 +107,7 @@ impl<'a> Visitor<Extent> for State<'a> {
         });
     }
 
-    fn visit_panel(&mut self, index: Index<WidgetStorage>, panel: &Panel, area: Extent) {
+    fn visit_panel(&mut self, index: Index<Widget>, panel: &Panel, area: Extent) {
         let child_width = area.width - 2 * panel.margin;
         let mut advancing_y = panel.margin;
         let mut max_child_width = Px(0);

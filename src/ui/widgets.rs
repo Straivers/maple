@@ -1,69 +1,16 @@
-use crate::{
-    gfx::Color,
-    px::Px,
-    shapes::{Extent, Rect},
-};
+use crate::{gfx::Color, px::Px, shapes::Extent};
 
 use super::tree::{Index, Tree};
 
-pub enum DrawCommand {
-    Rect { rect: Rect, color: Color },
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Layout {
-    pub size: Extent,
-}
-
-trait Widget {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        tree: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand);
-}
-
 #[derive(Clone)]
-pub enum WidgetStorage {
+pub enum Widget {
     Column(Column),
     Row(Row),
     Panel(Panel),
     Block(Block),
 }
 
-impl Widget for WidgetStorage {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        tree: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        match self {
-            WidgetStorage::Column(column) => {
-                column.build_draw_command_list(index, tree, layout, area, callback)
-            }
-            WidgetStorage::Row(row) => {
-                row.build_draw_command_list(index, tree, layout, area, callback)
-            }
-            WidgetStorage::Panel(panel) => {
-                panel.build_draw_command_list(index, tree, layout, area, callback)
-            }
-            WidgetStorage::Block(block) => {
-                block.build_draw_command_list(index, tree, layout, area, callback)
-            }
-        }
-    }
-}
-
-impl std::fmt::Debug for WidgetStorage {
+impl std::fmt::Debug for Widget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Column(column) => column.fmt(f),
@@ -74,27 +21,7 @@ impl std::fmt::Debug for WidgetStorage {
     }
 }
 
-pub type WidgetTree = Tree<WidgetStorage>;
-
-impl WidgetTree {
-    pub fn build_draw_command_list<F>(
-        &self,
-        root: Index<WidgetStorage>,
-        layout: &[Option<Layout>],
-        area: Extent,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        self.get(root).build_draw_command_list(
-            root,
-            self,
-            layout,
-            Rect::from_extent(Px(0), Px(0), area),
-            callback,
-        );
-    }
-}
+pub type WidgetTree = Tree<Widget>;
 
 /// The [`Block`] widget is a simple solid-colored rectangle. Useful for
 /// blocking out user interfaces or testing new layouts.
@@ -109,28 +36,6 @@ pub struct Block {
     pub size: Extent,
 }
 
-impl Widget for Block {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        _: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        callback(&DrawCommand::Rect {
-            rect: Rect::from_extent(
-                area.x(),
-                area.y(),
-                layout[index.get()].as_ref().unwrap().size,
-            ),
-            color: self.color,
-        });
-    }
-}
-
 /// The [`Column`] widget defines a column-based layout, where each child is
 /// placed below the previous one separated by a user-defined margin. The
 /// dimensions of the column is the smaller of the area allocated to it by its
@@ -140,75 +45,9 @@ pub struct Column {
     pub margin: Px,
 }
 
-impl Widget for Column {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        tree: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        let mut advancing_y = area.y();
-
-        for child_index in tree.children(index) {
-            let child = tree.get(*child_index);
-            child.build_draw_command_list(
-                *child_index,
-                tree,
-                layout,
-                Rect::new(
-                    area.x(),
-                    advancing_y,
-                    area.width(),
-                    area.height() - advancing_y,
-                ),
-                callback,
-            );
-            advancing_y += layout[child_index.get()].as_ref().unwrap().size.height;
-            advancing_y += self.margin;
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Row {
     pub margin: Px,
-}
-
-impl Widget for Row {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        tree: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        let mut advancing_x = area.x();
-
-        for child_index in tree.children(index) {
-            let child = tree.get(*child_index);
-            child.build_draw_command_list(
-                *child_index,
-                tree,
-                layout,
-                Rect::new(
-                    advancing_x,
-                    area.y(),
-                    area.width() - advancing_x,
-                    area.height(),
-                ),
-                callback,
-            );
-            advancing_x += layout[child_index.get()].as_ref().unwrap().size.width;
-            advancing_x += self.margin;
-        }
-    }
 }
 
 /// A [`Panel`] widget is a flexibly-sized container for child widgets with a
@@ -257,51 +96,9 @@ impl Panel {
     }
 }
 
-impl Widget for Panel {
-    fn build_draw_command_list<F>(
-        &self,
-        index: Index<WidgetStorage>,
-        tree: &WidgetTree,
-        layout: &[Option<Layout>],
-        area: Rect,
-        callback: &mut F,
-    ) where
-        F: FnMut(&DrawCommand),
-    {
-        callback(&DrawCommand::Rect {
-            rect: Rect::from_extent(
-                area.x(),
-                area.y(),
-                layout[index.get()].as_ref().unwrap().size,
-            ),
-            color: self.color,
-        });
-
-        let mut advancing_y = area.y() + self.margin;
-
-        for child_index in tree.children(index) {
-            let child = tree.get(*child_index);
-            child.build_draw_command_list(
-                *child_index,
-                tree,
-                layout,
-                Rect::new(
-                    area.x() + self.margin,
-                    advancing_y,
-                    area.width() - 2 * self.margin,
-                    area.height() - advancing_y,
-                ),
-                callback,
-            );
-            advancing_y += layout[child_index.get()].as_ref().unwrap().size.height;
-            advancing_y += self.margin;
-        }
-    }
-}
-
 pub trait Visitor<Extra> {
-    fn visit_column(&mut self, index: Index<WidgetStorage>, column: &Column, extra: Extra);
-    fn visit_row(&mut self, index: Index<WidgetStorage>, row: &Row, extra: Extra);
-    fn visit_block(&mut self, index: Index<WidgetStorage>, block: &Block, extra: Extra);
-    fn visit_panel(&mut self, index: Index<WidgetStorage>, panel: &Panel, extra: Extra);
+    fn visit_column(&mut self, index: Index<Widget>, column: &Column, extra: Extra);
+    fn visit_row(&mut self, index: Index<Widget>, row: &Row, extra: Extra);
+    fn visit_block(&mut self, index: Index<Widget>, block: &Block, extra: Extra);
+    fn visit_panel(&mut self, index: Index<Widget>, panel: &Panel, extra: Extra);
 }
