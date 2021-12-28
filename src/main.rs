@@ -118,7 +118,7 @@ fn run(_cli_options: &CliOptions) {
             &mut |command| match command {
                 DrawCommand::Rect { rect, color } => canvas.draw_styled(rect, *color),
             },
-        )
+        );
     });
 
     registry.remove("color").unwrap();
@@ -153,7 +153,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut C
                     ui_callback(&input, &mut canvas);
 
                     if let Some(request) =
-                        context.draw(window_size, &canvas.vertices(), &canvas.indices())
+                        context.draw(window_size, canvas.vertices(), canvas.indices())
                     {
                         let _ = renderer.execute(&request);
                     }
@@ -168,7 +168,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut C
                     ui_callback(&input, &mut canvas);
 
                     if let Some(request) =
-                        context.draw(window_size, &canvas.vertices(), &canvas.indices())
+                        context.draw(window_size, canvas.vertices(), canvas.indices())
                     {
                         let _ = renderer.execute(&request);
                     }

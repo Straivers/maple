@@ -122,8 +122,8 @@ impl<'a> WidgetBuilderScope<'a> {
         let children_start = self.children_stack.len();
         WidgetBuilderScope {
             widget,
-            tree: &mut self.tree,
-            children_stack: &mut self.children_stack,
+            tree: self.tree,
+            children_stack: self.children_stack,
             children_start,
         }
     }

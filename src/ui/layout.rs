@@ -29,7 +29,6 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    #[inline(always)]
     fn visit(&mut self, index: Index<Widget>, area: Extent) {
         match self.tree.get(index) {
             Widget::Column(column) => self.visit_column(index, column, area),
@@ -50,7 +49,7 @@ impl<'a> Visitor<Extent> for State<'a> {
             let child_layout = self.output[child.get()].as_ref().unwrap();
             advancing_y += child_layout.size.height + column.margin;
             if max_child_width < child_layout.size.width {
-                max_child_width = child_layout.size.width
+                max_child_width = child_layout.size.width;
             }
         }
 
@@ -75,7 +74,7 @@ impl<'a> Visitor<Extent> for State<'a> {
             let child_layout = self.output[child.get()].as_ref().unwrap();
             advancing_x += child_layout.size.width + row.margin;
             if max_child_height < child_layout.size.height {
-                max_child_height = child_layout.size.height
+                max_child_height = child_layout.size.height;
             }
         }
 
@@ -117,7 +116,7 @@ impl<'a> Visitor<Extent> for State<'a> {
             let child_layout = self.output[child.get()].as_ref().unwrap();
             advancing_y += child_layout.size.height + panel.margin;
             if max_child_width < child_layout.size.width {
-                max_child_width = child_layout.size.width
+                max_child_width = child_layout.size.width;
             }
         }
 

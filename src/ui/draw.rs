@@ -10,7 +10,7 @@ use super::{
     widgets::{Block, Column, Panel, Row, Visitor, Widget, WidgetTree},
 };
 
-pub enum DrawCommand {
+pub enum Command {
     Rect { rect: Rect, color: Color },
 }
 
@@ -21,7 +21,7 @@ pub fn build_draw_commands<F>(
     area: Extent,
     callback: &mut F,
 ) where
-    F: FnMut(&DrawCommand),
+    F: FnMut(&Command),
 {
     let mut state = State {
         tree,
@@ -33,7 +33,7 @@ pub fn build_draw_commands<F>(
 
 struct State<'a, F>
 where
-    F: FnMut(&DrawCommand),
+    F: FnMut(&Command),
 {
     tree: &'a WidgetTree,
     layout: &'a [Option<Layout>],
@@ -42,9 +42,8 @@ where
 
 impl<'a, F> State<'a, F>
 where
-    F: FnMut(&DrawCommand),
+    F: FnMut(&Command),
 {
-    #[inline(always)]
     fn visit(&mut self, index: Index<Widget>, area: Rect) {
         match self.tree.get(index) {
             Widget::Column(column) => self.visit_column(index, column, area),
@@ -57,7 +56,7 @@ where
 
 impl<'a, F> Visitor<Rect> for State<'a, F>
 where
-    F: FnMut(&DrawCommand),
+    F: FnMut(&Command),
 {
     fn visit_column(&mut self, index: Index<Widget>, column: &Column, area: Rect) {
         let mut advancing_y = area.y();
@@ -96,7 +95,7 @@ where
     }
 
     fn visit_block(&mut self, index: Index<Widget>, block: &Block, area: Rect) {
-        (self.callback)(&DrawCommand::Rect {
+        (self.callback)(&Command::Rect {
             rect: Rect::from_extent(
                 area.x(),
                 area.y(),
@@ -107,7 +106,7 @@ where
     }
 
     fn visit_panel(&mut self, index: Index<Widget>, panel: &Panel, area: Rect) {
-        (self.callback)(&DrawCommand::Rect {
+        (self.callback)(&Command::Rect {
             rect: Rect::from_extent(
                 area.x(),
                 area.y(),
