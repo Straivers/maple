@@ -14,7 +14,7 @@ use px::Px;
 use registry::named::{IdOps, StrOps};
 use shapes::Extent;
 use sys::{Event, EventLoopControl, InputState, MouseButton};
-use ui::{DrawCommand, WidgetTreeBuilder};
+use ui::{DrawCommand, WidgetTreeBuilder, compute_layout};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 //     MAPLE_CHECK_VULKAN=<0|1> Toggles use of Vulkan validation layers if they are available. [Default 1 on debug builds]";
@@ -108,7 +108,7 @@ fn run(_cli_options: &CliOptions) {
         let (widget_tree, root_widget) = widgets.build();
 
         let mut layout_buffer = vec![];
-        widget_tree.compute_layout(root_widget, canvas.size(), &mut layout_buffer);
+        compute_layout(&widget_tree, root_widget, canvas.size(), &mut layout_buffer);
 
         widget_tree.build_draw_command_list(
             root_widget,

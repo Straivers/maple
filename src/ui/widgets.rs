@@ -1,5 +1,3 @@
-use std::cmp::{max, min};
-
 use crate::{
     gfx::Color,
     px::Px,
@@ -14,20 +12,10 @@ pub enum DrawCommand {
 
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
-    size: Extent,
+    pub size: Extent,
 }
 
 trait Widget {
-    /// Computes the size of the widget, accounting for its childrens'
-    /// requirements.
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        tree: &WidgetTree,
-        output: &mut [Option<Layout>],
-    );
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -48,21 +36,6 @@ pub enum WidgetStorage {
 }
 
 impl Widget for WidgetStorage {
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        tree: &WidgetTree,
-        output: &mut [Option<Layout>],
-    ) {
-        match self {
-            WidgetStorage::Column(column) => column.compute_layout(index, area, tree, output),
-            WidgetStorage::Row(row) => row.compute_layout(index, area, tree, output),
-            WidgetStorage::Panel(panel) => panel.compute_layout(index, area, tree, output),
-            WidgetStorage::Block(block) => block.compute_layout(index, area, tree, output),
-        }
-    }
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -104,17 +77,6 @@ impl std::fmt::Debug for WidgetStorage {
 pub type WidgetTree = Tree<WidgetStorage>;
 
 impl WidgetTree {
-    pub fn compute_layout(
-        &self,
-        root: Index<WidgetStorage>,
-        area: Extent,
-        layout_buffer: &mut Vec<Option<Layout>>,
-    ) {
-        layout_buffer.resize(self.len(), None);
-        self.get(root)
-            .compute_layout(root, area, self, layout_buffer);
-    }
-
     pub fn build_draw_command_list<F>(
         &self,
         root: Index<WidgetStorage>,
@@ -148,28 +110,6 @@ pub struct Block {
 }
 
 impl Widget for Block {
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        _: &WidgetTree,
-        output: &mut [Option<Layout>],
-    ) {
-        let width = max(
-            self.min_size.width,
-            min(self.size.width, min(self.max_size.width, area.width)),
-        );
-
-        let height = max(
-            self.min_size.height,
-            min(self.size.height, min(self.max_size.height, area.height)),
-        );
-
-        output[index.get()] = Some(Layout {
-            size: Extent::new(width, height),
-        });
-    }
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -201,42 +141,6 @@ pub struct Column {
 }
 
 impl Widget for Column {
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        tree: &WidgetTree,
-        output: &mut [Option<Layout>],
-    ) {
-        let mut advancing_y = Px(0);
-        let mut max_child_width = Px(0);
-        for child in tree.children(index) {
-            tree.get(*child).compute_layout(
-                *child,
-                Extent::new(area.width, area.height - advancing_y),
-                tree,
-                output,
-            );
-
-            let child_layout = output[child.get()].as_ref().unwrap();
-            advancing_y += child_layout.size.height + self.margin;
-            if max_child_width < child_layout.size.width {
-                max_child_width = child_layout.size.width
-            }
-        }
-
-        // Compensate for over margin
-        if advancing_y > Px(0) {
-            advancing_y -= self.margin;
-        }
-
-        assert!(advancing_y <= area.height);
-
-        let final_size = Extent::new(max_child_width, advancing_y);
-
-        output[index.get()] = Some(Layout { size: final_size });
-    }
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -275,42 +179,6 @@ pub struct Row {
 }
 
 impl Widget for Row {
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        tree: &WidgetTree,
-        output: &mut [Option<Layout>],
-    ) {
-        let mut advancing_x = Px(0);
-        let mut max_child_height = Px(0);
-        for child in tree.children(index) {
-            tree.get(*child).compute_layout(
-                *child,
-                Extent::new(area.width - advancing_x, area.height),
-                tree,
-                output,
-            );
-
-            let child_layout = output[child.get()].as_ref().unwrap();
-            advancing_x += child_layout.size.width + self.margin;
-            if max_child_height < child_layout.size.height {
-                max_child_height = child_layout.size.height
-            }
-        }
-
-        // Compensate for over margin
-        if advancing_x > Px(0) {
-            advancing_x -= self.margin;
-        }
-
-        assert!(advancing_x <= area.width);
-
-        let final_size = Extent::new(advancing_x, max_child_height);
-
-        output[index.get()] = Some(Layout { size: final_size });
-    }
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -390,39 +258,6 @@ impl Panel {
 }
 
 impl Widget for Panel {
-    fn compute_layout(
-        &self,
-        index: Index<WidgetStorage>,
-        area: Extent,
-        tree: &WidgetTree,
-        output: &mut [Option<Layout>],
-    ) {
-        let child_width = area.width - 2 * self.margin;
-        let mut advancing_y = self.margin;
-        let mut max_child_width = Px(0);
-        for child in tree.children(index) {
-            tree.get(*child).compute_layout(
-                *child,
-                Extent::new(child_width, area.height - advancing_y),
-                tree,
-                output,
-            );
-
-            let child_layout = output[child.get()].as_ref().unwrap();
-            advancing_y += child_layout.size.height + self.margin;
-            if max_child_width < child_layout.size.width {
-                max_child_width = child_layout.size.width
-            }
-        }
-
-        let height = max(advancing_y, self.min_extent.height);
-        let width = max(max_child_width + 2 * self.margin, self.min_extent.width);
-
-        let final_size = Extent::new(width, height);
-
-        output[index.get()] = Some(Layout { size: final_size });
-    }
-
     fn build_draw_command_list<F>(
         &self,
         index: Index<WidgetStorage>,
@@ -462,4 +297,11 @@ impl Widget for Panel {
             advancing_y += self.margin;
         }
     }
+}
+
+pub trait Visitor<Extra> {
+    fn visit_column(&mut self, index: Index<WidgetStorage>, column: &Column, extra: Extra);
+    fn visit_row(&mut self, index: Index<WidgetStorage>, row: &Row, extra: Extra);
+    fn visit_block(&mut self, index: Index<WidgetStorage>, block: &Block, extra: Extra);
+    fn visit_panel(&mut self, index: Index<WidgetStorage>, panel: &Panel, extra: Extra);
 }

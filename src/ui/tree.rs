@@ -8,6 +8,13 @@ pub enum Error {
     TooManyChildren,
 }
 
+/// An [`Index`] is a that uniquely identifies an element within a particular
+/// [`Tree`].
+///
+/// To improve legibility and to reduce the likelihood that an index will be
+/// used with several trees, every [`Index`] is generic over the type of the
+/// element it identifies. This way, at least trees of different types will not
+/// have compatible indices.
 #[derive(Debug, PartialEq)]
 #[repr(transparent)]
 pub struct Index<Payload>(u16, PhantomData<Payload>);
@@ -38,6 +45,7 @@ impl<Payload> Index<Payload> {
     }
 }
 
+/// An append-only tree of elements.
 pub struct Tree<Payload>
 where
     Payload: Clone,
