@@ -37,8 +37,7 @@ pub enum Event {
     Created { size: Extent },
     Destroyed {},
     CloseRequested {},
-    Resized { size: Extent },
-    Update {},
+    Update { size: Extent, resized: bool },
     Input(super::input::Event),
 }
 
@@ -113,6 +112,7 @@ where
             high_surrogate: 0,
             handle: Handle { hwnd, hinstance },
             min_size: Extent::default(),
+            size: Extent::default(),
         },
     });
 
@@ -179,6 +179,7 @@ struct WindowState {
     handle: Handle,
     high_surrogate: u16,
     min_size: Extent,
+    size: Extent,
 }
 
 impl Control for WindowState {
@@ -265,8 +266,11 @@ where
                     .try_into()
                     .expect("Window height is negative or > 65535");
 
-                window.borrow_mut().dispatch(Event::Resized {
+                let mut window_mut = window.borrow_mut();
+                window_mut.state.size = Extent { width, height };
+                window_mut.dispatch(Event::Update {
                     size: Extent { width, height },
+                    resized: true
                 });
             }
             WM_ERASEBKGND => {
@@ -345,7 +349,14 @@ where
                     window_mut.dispatch(Event::Input(InputEvent::Char { codepoint }));
                 }
             }
-            WM_PAINT => window.borrow_mut().dispatch(Event::Update {}),
+            WM_PAINT => {
+                let mut window_mut = window.borrow_mut();
+                let size = window_mut.state.size;
+                window_mut.dispatch(Event::Update {
+                    size,
+                    resized: false
+                });
+            },
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 

@@ -13,7 +13,7 @@ use gfx::{Canvas, Color, DrawStyled, RendererWindow};
 use px::Px;
 use registry::named::{IdOps, StrOps};
 use shapes::Extent;
-use sys::{Event, EventLoopControl, InputState, MouseButton};
+use sys::{Event, EventLoopControl, InputState,  MouseButton};
 use ui::{build_draw_commands, compute_layout, DrawCommand, WidgetTreeBuilder};
 
 // const ENVIRONMENT_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -127,13 +127,11 @@ fn run(_cli_options: &CliOptions) {
 pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut Canvas)) {
     let mut context = RendererWindow::new();
     let mut renderer = gfx::Executor::new();
-    let mut window_size = Extent::default();
     let mut input = InputState::new();
 
     sys::window(title, |control, event| {
         match event {
             Event::Created { size } => {
-                window_size = size;
                 control.set_min_size(Extent::new(Px(100), Px(100)));
                 context.bind(control.handle(), size);
             }
@@ -144,31 +142,14 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&InputState, &mut C
             Event::Input(event) => {
                 input.process(event);
             }
-            Event::Resized { size } => {
-                window_size = size;
-
-                if window_size != Extent::default() {
-                    let mut canvas = Canvas::new(window_size);
+            Event::Update { size, resized } => {
+                if size != Extent::default() {
+                    let mut canvas = Canvas::new(size);
 
                     ui_callback(&input, &mut canvas);
 
                     if let Some(request) =
-                        context.draw(window_size, canvas.vertices(), canvas.indices())
-                    {
-                        let _ = renderer.execute(&request);
-                    }
-                }
-
-                input.reset();
-            }
-            Event::Update {} => {
-                if window_size != Extent::default() {
-                    let mut canvas = Canvas::new(window_size);
-
-                    ui_callback(&input, &mut canvas);
-
-                    if let Some(request) =
-                        context.draw(window_size, canvas.vertices(), canvas.indices())
+                        context.draw(size, canvas.vertices(), canvas.indices())
                     {
                         let _ = renderer.execute(&request);
                     }
