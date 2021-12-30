@@ -270,7 +270,7 @@ where
                 window_mut.state.size = Extent { width, height };
                 window_mut.dispatch(Event::Update {
                     size: Extent { width, height },
-                    resized: true
+                    resized: true,
                 });
             }
             WM_ERASEBKGND => {
@@ -354,9 +354,9 @@ where
                 let size = window_mut.state.size;
                 window_mut.dispatch(Event::Update {
                     size,
-                    resized: false
+                    resized: false,
                 });
-            },
+            }
             _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
         }
 
