@@ -5,46 +5,51 @@ use crate::{
 };
 
 use super::{
-    widget::{Button, Widget},
+    widget::{Button, State as WidgetState, Widget},
     Context, DrawCommand,
 };
 
+pub const UI_COLOR: Color = Color::rgb(100, 100, 100);
+pub const HOVER_COLOR: Color = Color::rgb(200, 200, 200);
+pub const ACTIVE_COLOR: Color = Color::rgb(100, 100, 255);
+
 pub trait LayoutState {
     fn end_child(&mut self, extent: Extent);
-
-    /// Maximize width, minimize height
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect;
 }
 
 #[allow(drop_bounds)]
 pub trait Layout: Drop {
-    /// Maximize width, minimize height
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect;
+    fn context(&mut self) -> &mut Context;
+
+    fn widget_extent(&self) -> (Extent, Extent);
+
+    fn position_extent(&mut self, extent: Extent) -> Rect;
 
     fn draw(&mut self, command: DrawCommand);
 
-    fn button(&mut self, _name: &str) -> bool {
+    /// Maximize width, minimize height
+    fn compute_layout(&mut self, compute_size: impl Fn(Extent, Extent) -> Extent) -> Rect {
+        let (min, max) = self.widget_extent();
+        let size = compute_size(min, max);
+        self.position_extent(size)
+    }
+
+    fn button(&mut self, name: &str) -> WidgetState {
         let button = Button {
-            id: 0,
+            id: self.context().named_id(name),
             min_size: Extent::new(Px(10), Px(20)),
             max_size: Extent::new(Px::MAX, Px::MAX),
         };
 
-        let rect = self.compute_layout(&button);
-
-        // do hit-testing and whatnot here
-
-        self.draw(DrawCommand::ColoredRect {
-            rect,
-            color: Color::rgb(200, 200, 200),
-        });
-
-        false
+        let rect = self.compute_layout(|min, max| button.compute_size(min, max));
+        let state = button.compute_state(rect, self.context());
+        button.draw(state, rect, |cmd| self.draw(cmd));
+        state
     }
 }
 
 pub struct TopToBottom<'a, 'b, 'c> {
-    context: &'a Context,
+    context: &'a mut Context,
     command_buffer: &'b mut Vec<DrawCommand>,
     parent: &'c mut dyn LayoutState,
     state: TopToBottomState,
@@ -60,7 +65,7 @@ pub struct TopToBottomState {
 
 impl<'a, 'b, 'c> TopToBottom<'a, 'b, 'c> {
     pub fn begin(
-        context: &'a Context,
+        context: &'a mut Context,
         command_buffer: &'b mut Vec<DrawCommand>,
         parent: &'c mut dyn LayoutState,
         x: Px,
@@ -106,30 +111,31 @@ impl LayoutState for TopToBottomState {
     fn end_child(&mut self, extent: Extent) {
         self.advancing_y += extent.height + self.margin;
     }
-
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        let min_height = Px(0);
-        let max_height = self.max.height - self.advancing_y;
-
-        let extent = widget.compute_size(
-            Extent::new(Px(0), min_height),
-            Extent::new(self.max.width, max_height),
-        );
-        let point = Point::new(self.x, self.advancing_y);
-
-        self.advancing_y += extent.height + self.margin;
-
-        Rect { point, extent }
-    }
 }
 
 impl<'a, 'b, 'c> Layout for TopToBottom<'a, 'b, 'c> {
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        self.state.compute_layout(widget)
+    fn context(&mut self) -> &mut Context {
+        self.context
     }
 
     fn draw(&mut self, command: DrawCommand) {
         self.command_buffer.push(command);
+    }
+
+    fn widget_extent(&self) -> (Extent, Extent) {
+        let min_height = Px(0);
+        let max_height = self.state.max.height - self.state.advancing_y;
+
+        (
+            Extent::new(Px(0), min_height),
+            Extent::new(self.state.max.width, max_height),
+        )
+    }
+
+    fn position_extent(&mut self, extent: Extent) -> Rect {
+        let point = Point::new(self.state.x, self.state.advancing_y);
+        self.state.advancing_y += extent.height + self.state.margin;
+        Rect { point, extent }
     }
 }
 
@@ -141,7 +147,7 @@ impl<'a, 'b, 'c> Drop for TopToBottom<'a, 'b, 'c> {
 }
 
 pub struct Columns<'a, 'b, 'c> {
-    context: &'a Context,
+    context: &'a mut Context,
     command_buffer: &'b mut Vec<DrawCommand>,
     parent: &'c mut dyn LayoutState,
     state: ColumnState,
@@ -160,7 +166,7 @@ struct ColumnState {
 
 impl<'a, 'b, 'c> Columns<'a, 'b, 'c> {
     pub fn begin(
-        context: &'a Context,
+        context: &'a mut Context,
         command_buffer: &'b mut Vec<DrawCommand>,
         parent: &'c mut dyn LayoutState,
         x: Px,
@@ -189,9 +195,7 @@ impl<'a, 'b, 'c> Columns<'a, 'b, 'c> {
     pub fn layout_rows(&mut self, margin: Px) -> TopToBottom {
         let y = self.state.y;
         let block_width = self.state.block_width();
-        let block_start = self.state.x
-            + self.state.margin
-            + ((block_width + self.state.margin) * self.state.column);
+        let block_start = self.state.block_start();
         TopToBottom::begin(
             self.context,
             self.command_buffer,
@@ -206,49 +210,55 @@ impl<'a, 'b, 'c> Columns<'a, 'b, 'c> {
 
 impl LayoutState for ColumnState {
     fn end_child(&mut self, extent: Extent) {
-        self.max_widget_height = self.max_widget_height.max(extent.height);
         self.column += 1;
-    }
-
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        assert!(self.column < self.num_columns, "too many columns");
-
         self.advancing_x += self.margin;
-        assert!(self.advancing_x <= self.max.width);
-
-        let block_width = self.block_width();
-
-        let extent = widget.compute_size(Extent::default(), Extent::new(block_width, Px::MAX));
-        let point = Point {
-            x: self.x
-                + self.margin
-                + ((block_width + self.margin) * self.column)
-                + (block_width / 2)
-                - (extent.width / 2),
-            y: self.y,
-        };
-
         self.max_widget_height = self.max_widget_height.max(extent.height);
-        self.column += 1;
-
-        Rect { point, extent }
     }
 }
 
 impl ColumnState {
     fn block_width(&self) -> Px {
-        let margins = (self.num_columns + 1) * self.margin;
+        let margins = (self.num_columns - 1) * self.margin;
         (self.max.width - margins) / self.num_columns
+    }
+
+    fn block_start(&self) -> Px {
+        self.x + (self.block_width() + self.margin) * self.column
     }
 }
 
 impl<'a, 'b, 'c> Layout for Columns<'a, 'b, 'c> {
+    fn context(&mut self) -> &mut Context {
+        self.context
+    }
+
     fn draw(&mut self, command: DrawCommand) {
         self.command_buffer.push(command);
     }
 
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        self.state.compute_layout(widget)
+    fn widget_extent(&self) -> (Extent, Extent) {
+        assert!(
+            self.state.column < self.state.num_columns,
+            "too many columns"
+        );
+        (
+            Extent::default(),
+            Extent::new(self.state.block_width(), Px::MAX),
+        )
+    }
+
+    fn position_extent(&mut self, extent: Extent) -> Rect {
+        let block_center = self.state.block_start() + (self.state.block_width() / 2);
+        let point = Point {
+            x: self.state.x + block_center - (extent.width / 2),
+            y: self.state.y,
+        };
+
+        self.state.column += 1;
+        self.state.advancing_x += self.state.margin;
+        self.state.max_widget_height = self.state.max_widget_height.max(extent.height);
+
+        Rect { point, extent }
     }
 }
 

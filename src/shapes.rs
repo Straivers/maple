@@ -76,20 +76,12 @@ impl Rect {
         self.point.y
     }
 
-    pub fn y_mut(&mut self) -> &mut Px {
-        &mut self.point.y
-    }
-
     pub fn width(&self) -> Px {
         self.extent.width
     }
 
     pub fn height(&self) -> Px {
         self.extent.height
-    }
-
-    pub fn height_mut(&mut self) -> &mut Px {
-        &mut self.extent.height
     }
 
     pub fn points(&self) -> [Point; 4] {
@@ -108,6 +100,15 @@ impl Rect {
                 y: self.y(),
             },
         ]
+    }
+
+    pub fn contains(&self, point: Point) -> bool {
+        let left_ok = point.x >= self.point.x;
+        let right_ok = point.x < self.point.x + self.extent.width;
+        let top_ok = point.y >= self.point.y;
+        let bottom_ok = point.y < self.point.y + self.extent.height;
+
+        left_ok & right_ok & top_ok & bottom_ok
     }
 }
 

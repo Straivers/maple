@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use crate::{
     gfx::Color,
     px::Px,
@@ -5,6 +7,7 @@ use crate::{
 };
 
 mod widget;
+use ahash::AHasher;
 pub use widget::*;
 
 mod layout;
@@ -14,10 +17,28 @@ pub enum DrawCommand {
     ColoredRect { rect: Rect, color: Color },
 }
 
+#[derive(PartialEq)]
+pub enum ActiveItem {
+    Active(u64),
+    Available,
+    Locked,
+}
+
+pub use ActiveItem::*;
+
+impl Default for ActiveItem {
+    fn default() -> Self {
+        Self::Available
+    }
+}
+
 #[derive(Default)]
 pub struct Context {
     cursor: Point,
     is_lmb_pressed: bool,
+
+    hover_item: u64,
+    active_item: ActiveItem,
 }
 
 impl Context {
@@ -32,6 +53,22 @@ impl Context {
             ui_size,
             command_buffer,
         }
+    }
+
+    fn end(&mut self) {
+        if self.is_lmb_pressed {
+            if self.active_item == ActiveItem::Available {
+                self.active_item = ActiveItem::Locked;
+            }
+        } else {
+            self.active_item = ActiveItem::Available;
+        }
+    }
+
+    fn named_id(&self, s: &str) -> u64 {
+        let mut hasher = AHasher::default();
+        s.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -65,7 +102,7 @@ impl<'a, 'b> InputHandler<'a, 'b> {
 }
 
 pub struct Builder<'a, 'b> {
-    context: &'a Context,
+    context: &'a mut Context,
     command_buffer: Option<&'b mut Vec<DrawCommand>>,
     state: BuilderLayoutState,
 }
@@ -73,7 +110,7 @@ pub struct Builder<'a, 'b> {
 impl<'a, 'b> Builder<'a, 'b> {
     fn new(
         ui_size: Extent,
-        context: &'a Context,
+        context: &'a mut Context,
         command_buffer: &'b mut Vec<DrawCommand>,
     ) -> Self {
         Self {
@@ -113,37 +150,38 @@ impl LayoutState for BuilderLayoutState {
     fn end_child(&mut self, extent: Extent) {
         self.advancing_y += extent.height;
     }
-
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        assert!(self.advancing_y <= self.max.height);
-
-        let min_height = Px(0);
-        let max_height = self.max.height - self.advancing_y;
-
-        let extent = widget.compute_size(
-            Extent::new(Px(0), min_height),
-            Extent::new(self.max.width, max_height),
-        );
-        let point = Point::new(Px(0), self.advancing_y);
-
-        self.advancing_y += extent.height;
-
-        Rect { point, extent }
-    }
 }
 
 impl<'a, 'b> Layout for Builder<'a, 'b> {
-    fn compute_layout(&mut self, widget: &dyn Widget) -> Rect {
-        self.state.compute_layout(widget)
+    fn context(&mut self) -> &mut Context {
+        self.context
     }
 
     fn draw(&mut self, command: DrawCommand) {
         self.command_buffer.as_mut().unwrap().push(command);
     }
+
+    fn widget_extent(&self) -> (Extent, Extent) {
+        assert!(self.state.advancing_y <= self.state.max.height);
+
+        let min_height = Px(0);
+        let max_height = self.state.max.height - self.state.advancing_y;
+
+        (
+            Extent::new(Px(0), min_height),
+            Extent::new(self.state.max.width, max_height),
+        )
+    }
+
+    fn position_extent(&mut self, extent: Extent) -> Rect {
+        let point = Point::new(Px(0), self.state.advancing_y);
+        self.state.advancing_y += extent.height;
+        Rect { point, extent }
+    }
 }
 
 impl<'a, 'b> Drop for Builder<'a, 'b> {
     fn drop(&mut self) {
-        // no-op
+        self.context.end();
     }
 }

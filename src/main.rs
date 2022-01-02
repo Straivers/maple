@@ -61,9 +61,10 @@ fn run() {
                     columns.button("d");
                     {
                         let mut rows = columns.layout_rows(Px(10));
-                        rows.button("e");
-                        rows.button("f");
-                        rows.button("g");
+                        if rows.button("e").is_active() {
+                            rows.button("f");
+                            rows.button("g");
+                        }
                     }
                     columns.button("h");
                 }
