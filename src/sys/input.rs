@@ -20,7 +20,7 @@ pub enum MouseButton {
     Right  = 2,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
     None,
     CursorMove {

@@ -9,10 +9,11 @@ mod ui;
 
 // use clap::App;
 
-use gfx::{Canvas, DrawStyled, RendererWindow};
+use gfx::{Canvas, CanvasStorage, DrawStyled, RendererWindow};
 use px::Px;
 use shapes::Extent;
 use sys::{ButtonState, EventLoopControl, InputEvent, MouseButton, WindowEvent};
+use ui::Layout;
 
 #[derive(Debug)]
 struct CliOptions {}
@@ -37,6 +38,7 @@ fn run() {
             let input_handler = ui_context.begin(canvas.size(), &mut ui_command_buffer);
 
             let mut ui = match input {
+                InputEvent::None => input_handler.no_input(),
                 InputEvent::CursorMove { position } => input_handler.move_cursor(*position),
                 InputEvent::MouseButton { button, state } => {
                     if *button == MouseButton::Left {
@@ -48,13 +50,35 @@ fn run() {
                 _ => continue,
             };
 
-            // actually build the ui here
+            {
+                let mut rows = ui.top_to_bottom(Px(10));
+                rows.button("a");
+                {
+                    let mut columns = rows.layout_columns(2, Px(20));
+                    columns.button("b");
+                    columns.button("c");
+                }
+                {
+                    let mut columns = rows.layout_columns(3, Px(20));
+                    columns.button("d");
+                    {
+                        let mut rows = columns.layout_rows(Px(10));
+                        rows.button("e");
+                        rows.button("f");
+                        rows.button("g");
+                    }
+                    columns.button("h");
+                }
+                rows.button("i");
+            }
 
-
-            for command in ui.build() {
-                match command {
-                    ui::DrawCommand::ColoredRect { rect, color } => {
-                        canvas.draw_styled(rect, *color)
+            if *input == InputEvent::None {
+                canvas.clear();
+                for command in ui.build() {
+                    match command {
+                        ui::DrawCommand::ColoredRect { rect, color } => {
+                            canvas.draw_styled(rect, *color)
+                        }
                     }
                 }
             }
@@ -69,6 +93,8 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
     let mut context = RendererWindow::new();
     let mut renderer = gfx::Executor::new();
     let mut inputs = vec![];
+
+    let mut canvas_storage = CanvasStorage::default();
 
     sys::window(title, |control, event| {
         match event {
@@ -85,12 +111,9 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
             }
             WindowEvent::Update { size, resized } => {
                 if size != Extent::default() {
-                    let mut canvas = Canvas::new(size);
+                    inputs.push(InputEvent::None);
 
-                    if inputs.is_empty() {
-                        inputs.push(InputEvent::None);
-                    }
-
+                    let mut canvas = Canvas::new(size, &mut canvas_storage);
                     ui_callback(&inputs, &mut canvas);
                     inputs.clear();
 
