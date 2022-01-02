@@ -7,8 +7,6 @@ mod sys;
 mod traits;
 mod ui;
 
-// use clap::App;
-
 use gfx::{Canvas, CanvasStorage, DrawStyled, RendererWindow};
 use px::Px;
 use shapes::Extent;
@@ -109,7 +107,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
             WindowEvent::Input(event) => {
                 inputs.push(event);
             }
-            WindowEvent::Update { size, resized } => {
+            WindowEvent::Update { size, resized: _ } => {
                 if size != Extent::default() {
                     inputs.push(InputEvent::None);
 

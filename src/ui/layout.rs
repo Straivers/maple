@@ -1,7 +1,13 @@
-use crate::{shapes::{Extent, Rect, Point}, px::Px, gfx::Color};
+use crate::{
+    gfx::Color,
+    px::Px,
+    shapes::{Extent, Point, Rect},
+};
 
-use super::{widget::{Widget, Button}, DrawCommand, Context};
-
+use super::{
+    widget::{Button, Widget},
+    Context, DrawCommand,
+};
 
 pub trait LayoutState {
     fn end_child(&mut self, extent: Extent);
@@ -17,7 +23,7 @@ pub trait Layout: Drop {
 
     fn draw(&mut self, command: DrawCommand);
 
-    fn button(&mut self, name: &str) -> bool {
+    fn button(&mut self, _name: &str) -> bool {
         let button = Button {
             id: 0,
             min_size: Extent::new(Px(10), Px(20)),
@@ -183,7 +189,9 @@ impl<'a, 'b, 'c> Columns<'a, 'b, 'c> {
     pub fn layout_rows(&mut self, margin: Px) -> TopToBottom {
         let y = self.state.y;
         let block_width = self.state.block_width();
-        let block_start = self.state.x + self.state.margin + ((block_width + self.state.margin) * self.state.column);
+        let block_start = self.state.x
+            + self.state.margin
+            + ((block_width + self.state.margin) * self.state.column);
         TopToBottom::begin(
             self.context,
             self.command_buffer,
@@ -191,7 +199,7 @@ impl<'a, 'b, 'c> Columns<'a, 'b, 'c> {
             block_start,
             y,
             Extent::new(block_width, Px::MAX),
-            margin
+            margin,
         )
     }
 }
@@ -212,7 +220,11 @@ impl LayoutState for ColumnState {
 
         let extent = widget.compute_size(Extent::default(), Extent::new(block_width, Px::MAX));
         let point = Point {
-            x: self.x + self.margin + ((block_width + self.margin) * self.column) + (block_width / 2) - (extent.width / 2),
+            x: self.x
+                + self.margin
+                + ((block_width + self.margin) * self.column)
+                + (block_width / 2)
+                - (extent.width / 2),
             y: self.y,
         };
 
