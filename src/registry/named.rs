@@ -4,6 +4,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use ahash::AHasher;
+
 pub use super::{
     indexed::{self, Type},
     slot::Id,
@@ -135,7 +137,7 @@ impl_ops!(
 );
 
 fn hash_name(name: &str) -> u64 {
-    let mut state = DefaultHasher::new();
-    name.hash(&mut state);
-    state.finish()
+    let mut hasher = AHasher::default();
+    name.hash(&mut hasher);
+    hasher.finish()
 }
