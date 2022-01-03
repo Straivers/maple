@@ -13,6 +13,7 @@ pub use widget::*;
 mod layout;
 pub use layout::*;
 
+#[derive(Debug)]
 pub enum DrawCommand {
     ColoredRect { rect: Rect, color: Color },
 }
@@ -59,6 +60,8 @@ impl Context {
         if self.is_lmb_pressed {
             if self.active_item == ActiveItem::Available {
                 self.active_item = ActiveItem::Locked;
+            } else {
+                // The user has clicked on an item and held the LMB down.
             }
         } else {
             self.active_item = ActiveItem::Available;

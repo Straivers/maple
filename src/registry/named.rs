@@ -1,6 +1,6 @@
 use std::{
     any::Any,
-    collections::hash_map::{DefaultHasher, Entry, HashMap},
+    collections::hash_map::{Entry, HashMap},
     hash::{Hash, Hasher},
 };
 

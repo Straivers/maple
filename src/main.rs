@@ -9,6 +9,7 @@ mod ui;
 
 use gfx::{Canvas, CanvasStorage, DrawStyled, RendererWindow};
 use px::Px;
+use registry::named::StrOps;
 use shapes::Extent;
 use sys::{ButtonState, EventLoopControl, InputEvent, MouseButton, WindowEvent};
 use ui::Layout;
@@ -28,9 +29,11 @@ pub enum WindowStatus {
 }
 
 fn run() {
+    let mut registry = registry::named::Registry::new();
     let mut ui_context = ui::Context::default();
     let mut ui_command_buffer = vec![];
 
+    registry.set("slider", 0.5 as f32).unwrap();
     spawn_window("Title 1", |inputs, canvas| {
         for input in inputs {
             let input_handler = ui_context.begin(canvas.size(), &mut ui_command_buffer);
@@ -66,7 +69,7 @@ fn run() {
                             rows.button("g");
                         }
                     }
-                    columns.button("h");
+                    columns.smooth_slider("h", registry.get_mut("slider").unwrap())
                 }
                 rows.button("i");
             }
@@ -83,6 +86,7 @@ fn run() {
             }
         }
     });
+    registry.remove("slider").unwrap();
 }
 
 /// Always calls ui_callback with at least one event. If no inputs were received

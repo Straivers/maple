@@ -2,6 +2,7 @@ use crate::{
     gfx::Color,
     px::Px,
     shapes::{Extent, Point, Rect},
+    ui::SmoothSlider,
 };
 
 use super::{
@@ -28,23 +29,50 @@ pub trait Layout: Drop {
     fn draw(&mut self, command: DrawCommand);
 
     /// Maximize width, minimize height
-    fn compute_layout(&mut self, compute_size: impl Fn(Extent, Extent) -> Extent) -> Rect {
+    fn widget<S: Copy, T: Widget<S>>(&mut self, name: &str, widget: &T) -> S {
         let (min, max) = self.widget_extent();
-        let size = compute_size(min, max);
-        self.position_extent(size)
+        let rect = self.position_extent(widget.compute_size(min, max));
+        let state = widget.compute_state(rect, self.context());
+        widget.draw(state, rect, |cmd| {
+            #[cfg(debug_assertions)]
+            self.check_draw_bounds(name, rect, &cmd);
+            self.draw(cmd)
+        });
+        state
+    }
+
+    fn check_draw_bounds(&self, name: &str, bounds: Rect, command: &DrawCommand) {
+        let ok = match command {
+            DrawCommand::ColoredRect { rect, color: _ } => bounds.contains_rect(*rect),
+        };
+
+        assert!(
+            ok,
+            "widget \"{}\" rendered outside its bounds (bounds: {:?}, command: {:?})",
+            name, &bounds, command
+        );
     }
 
     fn button(&mut self, name: &str) -> WidgetState {
-        let button = Button {
+        let widget = Button {
             id: self.context().named_id(name),
             min_size: Extent::new(Px(10), Px(20)),
             max_size: Extent::new(Px::MAX, Px::MAX),
         };
 
-        let rect = self.compute_layout(|min, max| button.compute_size(min, max));
-        let state = button.compute_state(rect, self.context());
-        button.draw(state, rect, |cmd| self.draw(cmd));
-        state
+        self.widget(name, &widget)
+    }
+
+    fn smooth_slider(&mut self, name: &str, value: &mut f32) {
+        let widget = SmoothSlider {
+            id: self.context().named_id(name),
+            value: *value,
+            max_height: Px(20),
+            slider_width: Px(5),
+        };
+
+        let state = self.widget(name, &widget);
+        *value = state.1;
     }
 }
 

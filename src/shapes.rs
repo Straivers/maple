@@ -84,6 +84,22 @@ impl Rect {
         self.extent.height
     }
 
+    pub fn left(&self) -> Px {
+        self.point.x
+    }
+
+    pub fn right(&self) -> Px {
+        self.point.x + self.extent.width
+    }
+
+    pub fn top(&self) -> Px {
+        self.point.y
+    }
+
+    pub fn bottom(&self) -> Px {
+        self.point.y + self.extent.height
+    }
+
     pub fn points(&self) -> [Point; 4] {
         [
             self.point,
@@ -102,13 +118,18 @@ impl Rect {
         ]
     }
 
-    pub fn contains(&self, point: Point) -> bool {
-        let left_ok = point.x >= self.point.x;
-        let right_ok = point.x < self.point.x + self.extent.width;
-        let top_ok = point.y >= self.point.y;
-        let bottom_ok = point.y < self.point.y + self.extent.height;
+    pub fn contains_point(&self, point: Point) -> bool {
+        (self.left() <= point.x)
+            & (self.right() >= point.x)
+            & (self.top() <= point.y)
+            & (self.bottom() >= point.y)
+    }
 
-        left_ok & right_ok & top_ok & bottom_ok
+    pub fn contains_rect(&self, rect: Self) -> bool {
+        (self.left() <= rect.left())
+            & (self.right() >= rect.right())
+            & (self.top() <= rect.top())
+            & (self.bottom() >= rect.bottom())
     }
 }
 
