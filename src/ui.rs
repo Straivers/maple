@@ -18,6 +18,14 @@ pub enum DrawCommand {
     ColoredRect { rect: Rect, color: Color },
 }
 
+impl DrawCommand {
+    pub fn in_bounds(&self, bounds: Rect) -> bool {
+        match self {
+            DrawCommand::ColoredRect { rect, color: _ } => bounds.contains_rect(*rect),
+        }
+    }
+}
+
 #[derive(PartialEq)]
 pub enum ActiveItem {
     Active(u64),
@@ -153,6 +161,24 @@ impl LayoutState for BuilderLayoutState {
     fn end_child(&mut self, extent: Extent) {
         self.advancing_y += extent.height;
     }
+
+    fn widget_extent(&self) -> (Extent, Extent) {
+        assert!(self.advancing_y <= self.max.height);
+
+        let min_height = Px(0);
+        let max_height = self.max.height - self.advancing_y;
+
+        (
+            Extent::new(Px(0), min_height),
+            Extent::new(self.max.width, max_height),
+        )
+    }
+
+    fn position_extent(&mut self, extent: Extent) -> Rect {
+        let point = Point::new(Px(0), self.advancing_y);
+        self.advancing_y += extent.height;
+        Rect { point, extent }
+    }
 }
 
 impl<'a, 'b> Layout for Builder<'a, 'b> {
@@ -160,26 +186,12 @@ impl<'a, 'b> Layout for Builder<'a, 'b> {
         self.context
     }
 
+    fn state(&mut self) -> &mut dyn LayoutState {
+        &mut self.state
+    }
+
     fn draw(&mut self, command: DrawCommand) {
         self.command_buffer.as_mut().unwrap().push(command);
-    }
-
-    fn widget_extent(&self) -> (Extent, Extent) {
-        assert!(self.state.advancing_y <= self.state.max.height);
-
-        let min_height = Px(0);
-        let max_height = self.state.max.height - self.state.advancing_y;
-
-        (
-            Extent::new(Px(0), min_height),
-            Extent::new(self.state.max.width, max_height),
-        )
-    }
-
-    fn position_extent(&mut self, extent: Extent) -> Rect {
-        let point = Point::new(Px(0), self.state.advancing_y);
-        self.state.advancing_y += extent.height;
-        Rect { point, extent }
     }
 }
 
