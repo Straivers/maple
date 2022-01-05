@@ -279,15 +279,33 @@ impl Vulkan {
         surface: vk::SurfaceKHR,
         size: vk::Extent2D,
         old: Option<vk::SwapchainKHR>,
+        formats: &mut Vec<vk::SurfaceFormatKHR>,
+        present_modes: &mut Vec<vk::PresentModeKHR>,
     ) -> SwapchainData {
-        assert!(unsafe {
-            self.surface_api.get_physical_device_surface_support(
-                self.gpu.handle,
-                self.gpu.present_queue_index,
-                surface,
-            )
+        if old.is_none() {
+            assert!(unsafe {
+                self.surface_api.get_physical_device_surface_support(
+                    self.gpu.handle,
+                    self.gpu.present_queue_index,
+                    surface,
+                )
+            }
+            .unwrap_or(false));
+
+            debug_assert!(formats.is_empty());
+            *formats = unsafe {
+                self.surface_api
+                    .get_physical_device_surface_formats(self.gpu.handle, surface)
+                    .unwrap()
+            };
+
+            debug_assert!(present_modes.is_empty());
+            *present_modes = unsafe {
+                self.surface_api
+                    .get_physical_device_surface_present_modes(self.gpu.handle, surface)
+                    .unwrap()
+            };
         }
-        .unwrap_or(false));
 
         let capabilities = unsafe {
             self.surface_api
@@ -295,32 +313,18 @@ impl Vulkan {
                 .unwrap()
         };
 
-        let format = {
-            let formats = load_vk_objects::<_, _, 64>(|count, ptr| unsafe {
-                self.surface_api
-                    .fp()
-                    .get_physical_device_surface_formats_khr(self.gpu.handle, surface, count, ptr)
+        let format = *formats
+            .iter()
+            .find(|f| {
+                f.format == vk::Format::B8G8R8A8_SRGB
+                    && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
-            .unwrap();
+            .unwrap_or(&formats[0]);
 
-            *formats
-                .iter()
-                .find(|f| {
-                    f.format == vk::Format::B8G8R8A8_SRGB
-                        && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-                })
-                .unwrap_or(&formats[0])
-        };
-
-        let present_mode = *load_vk_objects::<_, _, 8>(|count, ptr| unsafe {
-            self.surface_api
-                .fp()
-                .get_physical_device_surface_present_modes_khr(self.gpu.handle, surface, count, ptr)
-        })
-        .unwrap()
-        .iter()
-        .find(|p| **p == vk::PresentModeKHR::MAILBOX)
-        .unwrap_or(&vk::PresentModeKHR::FIFO);
+        let present_mode = *present_modes
+            .iter()
+            .find(|p| **p == vk::PresentModeKHR::MAILBOX)
+            .unwrap_or(&vk::PresentModeKHR::FIFO);
 
         let image_size = {
             if capabilities.current_extent.width == u32::MAX {

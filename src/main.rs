@@ -7,6 +7,8 @@ mod sys;
 mod traits;
 mod ui;
 
+use std::time::Instant;
+
 use gfx::{Canvas, CanvasStorage, DrawStyled, RendererWindow};
 use px::Px;
 use registry::named::StrOps;
@@ -112,16 +114,36 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
             WindowEvent::Input(event) => {
                 inputs.push(event);
             }
-            WindowEvent::Update { size, resized: _ } => {
+            WindowEvent::Update { size, resized } => {
+                if size == Extent::default() {
+                    println!("oops");
+                }
                 if size != Extent::default() {
+                    let update_start = Instant::now();
                     inputs.push(InputEvent::None);
 
                     let mut canvas = Canvas::new(size, &mut canvas_storage);
                     ui_callback(&inputs, &mut canvas);
                     inputs.clear();
 
+                    let ui_time = Instant::now() - update_start;
+
+                    let draw_start = Instant::now();
                     if let Some(request) = context.draw(size, canvas.vertices(), canvas.indices()) {
                         let _ = renderer.execute(&request);
+                    }
+
+                    let draw_time = Instant::now() - draw_start;
+
+                    let s = format!(
+                        "UI Time: {}ms, Draw Time: {}ms",
+                        ui_time.as_millis(),
+                        draw_time.as_millis()
+                    );
+                    control.set_title(&s);
+
+                    if resized {
+                        println!("{}", &s);
                     }
                 }
             }

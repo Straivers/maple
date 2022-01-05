@@ -41,6 +41,8 @@ pub struct Frame {
 #[derive(Default)]
 pub struct RendererWindow {
     surface: vk::SurfaceKHR,
+    surface_formats: Vec<vk::SurfaceFormatKHR>,
+    surface_present_modes: Vec<vk::PresentModeKHR>,
     swapchain: SwapchainData,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
@@ -58,6 +60,8 @@ impl RendererWindow {
 
         Self {
             surface: vk::SurfaceKHR::null(),
+            surface_formats: vec![],
+            surface_present_modes: vec![],
             swapchain: SwapchainData::default(),
             render_pass: vk::RenderPass::null(),
             pipeline: vk::Pipeline::null(),
@@ -91,7 +95,13 @@ impl RendererWindow {
         let extent = to_extent(window_size);
 
         self.surface = VULKAN.create_surface(window);
-        self.swapchain = VULKAN.create_or_resize_swapchain(self.surface, extent, None);
+        self.swapchain = VULKAN.create_or_resize_swapchain(
+            self.surface,
+            extent,
+            None,
+            &mut self.surface_formats,
+            &mut self.surface_present_modes,
+        );
         self.render_pass = create_render_pass(self.swapchain.format);
         self.pipeline = create_pipeline(*PIPELINE_LAYOUT, self.render_pass);
 
@@ -173,6 +183,8 @@ impl RendererWindow {
             self.surface,
             window_extent,
             Some(self.swapchain.handle),
+            &mut self.surface_formats,
+            &mut self.surface_present_modes,
         );
 
         if old_format != self.swapchain.format {

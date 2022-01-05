@@ -6,12 +6,13 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
         GetWindowLongPtrW, GetWindowRect, LoadCursorW, PeekMessageW, PostQuitMessage,
-        RegisterClassW, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW,
-        CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MINMAXINFO, MSG, PM_REMOVE, SW_SHOW,
-        WHEEL_DELTA, WINDOW_EX_STYLE, WM_CHAR, WM_CLOSE, WM_CREATE, WM_ERASEBKGND,
-        WM_GETMINMAXINFO, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
-        WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_QUIT, WM_RBUTTONDOWN,
-        WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+        RegisterClassW, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TranslateMessage,
+        CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, MINMAXINFO,
+        MSG, PM_REMOVE, SWP_NOCOPYBITS, SW_SHOW, WHEEL_DELTA, WINDOWPOS, WINDOW_EX_STYLE, WM_CHAR,
+        WM_CLOSE, WM_CREATE, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT,
+        WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WM_WINDOWPOSCHANGING, WNDCLASSW,
+        WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -60,6 +61,8 @@ pub trait Control {
     fn min_size(&self) -> Extent;
 
     fn set_min_size(&mut self, size: Extent);
+
+    fn set_title(&mut self, s: &str);
 }
 
 pub fn window<Callback>(title: &str, callback: Callback)
@@ -194,6 +197,13 @@ impl Control for WindowState {
     fn set_min_size(&mut self, size: Extent) {
         self.min_size = size;
     }
+
+    fn set_title(&mut self, s: &str) {
+        let mut text = to_wstr::<MAX_TITLE_LENGTH>(s);
+        unsafe {
+            SetWindowTextW(self.handle.hwnd, PWSTR(text.as_mut_ptr()));
+        }
+    }
 }
 
 impl<Callback> Window<Callback>
@@ -278,6 +288,10 @@ where
                   https://stackoverflow.com/questions/53000291/how-to-smooth-ugly-jitter-flicker-jumping-when-resizing-windows-especially-drag
                 */
                 return LRESULT(1);
+            }
+            WM_WINDOWPOSCHANGING => {
+                let pos = lparam.0 as *mut WINDOWPOS;
+                (*pos).flags |= SWP_NOCOPYBITS;
             }
             WM_MOUSEMOVE => window
                 .borrow_mut()
