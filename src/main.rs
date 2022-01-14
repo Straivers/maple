@@ -95,7 +95,7 @@ fn run() {
 /// since the last call, the [`InputEvent::None`](sys::input::Event) event is
 /// used.
 pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut Canvas)) {
-    let mut context = RendererWindow::new();
+    let mut context = None;
     let mut renderer = gfx::Executor::new();
     let mut inputs = vec![];
 
@@ -105,7 +105,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
         match event {
             WindowEvent::Created { size } => {
                 control.set_min_size(Extent::new(Px(100), Px(100)));
-                context.bind(control.handle(), size);
+                context = Some(RendererWindow::new(control.handle(), size));
             }
             WindowEvent::Destroyed {} => {}
             WindowEvent::CloseRequested {} => {
@@ -129,7 +129,12 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
                     let ui_time = Instant::now() - update_start;
 
                     let draw_start = Instant::now();
-                    if let Some(request) = context.draw(size, canvas.vertices(), canvas.indices()) {
+                    if let Some(request) =
+                        context
+                            .as_mut()
+                            .unwrap()
+                            .draw(size, canvas.vertices(), canvas.indices())
+                    {
                         let _ = renderer.execute(&request);
                     }
 

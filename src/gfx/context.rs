@@ -25,7 +25,6 @@ impl Drop for SwapchainImage {
     }
 }
 
-#[derive(Default)]
 pub struct Frame {
     fence: vk::Fence,
     acquire: vk::Semaphore,
@@ -36,66 +35,58 @@ pub struct Frame {
     buffer_size: vk::DeviceSize,
 }
 
+impl Frame {
+    fn new(command_buffer: vk::CommandBuffer) -> Self {
+        Self {
+            fence: VULKAN.create_fence(true),
+            acquire: VULKAN.create_semaphore(),
+            present: VULKAN.create_semaphore(),
+            command_buffer: command_buffer,
+            buffer: vk::Buffer::null(),
+            memory: vk::DeviceMemory::null(),
+            buffer_size: 0,
+        }
+    }
+}
+
 /// A [`RenderContext`] contains all render state needed for a window to
 /// communicate with the renderer.
-#[derive(Default)]
 pub struct RendererWindow {
     surface: SurfaceData,
     swapchain: SwapchainData,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
-    command_pool: vk::CommandPool,
     images: Vec<SwapchainImage>,
+    command_pool: vk::CommandPool,
     frames: [Frame; FRAMES_IN_FLIGHT],
     frame_id: u8,
 }
 
 impl RendererWindow {
-    pub fn new() -> Self {
+    pub fn new(window: &Handle, window_size: Extent) -> Self {
+        let surface = VULKAN.create_surface(window);
+        let swapchain = VULKAN.create_or_resize_swapchain(&surface, to_extent(window_size), None);
+        let render_pass = create_render_pass(swapchain.format);
+        let pipeline = create_pipeline(*PIPELINE_LAYOUT, render_pass);
+        let mut images = vec![];
+        Self::init_images(&swapchain, render_pass, &mut images);
         let command_pool = VULKAN.create_graphics_command_pool(true, true);
         let mut command_buffers = [vk::CommandBuffer::null(), vk::CommandBuffer::null()];
         VULKAN.allocate_command_buffers(command_pool, &mut command_buffers);
 
         Self {
-            surface: SurfaceData::default(),
-            swapchain: SwapchainData::default(),
-            render_pass: vk::RenderPass::null(),
-            pipeline: vk::Pipeline::null(),
+            surface,
+            swapchain,
+            render_pass,
+            pipeline,
+            images,
             command_pool,
-            images: vec![],
             frames: [
-                Frame {
-                    fence: VULKAN.create_fence(true),
-                    acquire: VULKAN.create_semaphore(),
-                    present: VULKAN.create_semaphore(),
-                    command_buffer: command_buffers[0],
-                    buffer: vk::Buffer::null(),
-                    memory: vk::DeviceMemory::null(),
-                    buffer_size: 0,
-                },
-                Frame {
-                    fence: VULKAN.create_fence(true),
-                    acquire: VULKAN.create_semaphore(),
-                    present: VULKAN.create_semaphore(),
-                    command_buffer: command_buffers[1],
-                    buffer: vk::Buffer::null(),
-                    memory: vk::DeviceMemory::null(),
-                    buffer_size: 0,
-                },
+                Frame::new(command_buffers[0]),
+                Frame::new(command_buffers[1]),
             ],
             frame_id: 0,
         }
-    }
-
-    pub fn bind(&mut self, window: &Handle, window_size: Extent) {
-        let extent = to_extent(window_size);
-
-        self.surface = VULKAN.create_surface(window);
-        self.swapchain = VULKAN.create_or_resize_swapchain(&self.surface, extent, None);
-        self.render_pass = create_render_pass(self.swapchain.format);
-        self.pipeline = create_pipeline(*PIPELINE_LAYOUT, self.render_pass);
-
-        self.init_images();
     }
 
     pub fn draw(
@@ -104,17 +95,14 @@ impl RendererWindow {
         vertices: &[Vertex],
         indices: &[u16],
     ) -> Option<Request> {
-        let frame_id = self.frame_id as usize;
-        let frame = &mut self.frames[frame_id];
-        let _ = VULKAN.wait_for_fences(&[frame.fence], u64::MAX);
-
         let window_extent = to_extent(window_size);
         if window_extent != self.swapchain.image_size {
             self.resize(window_extent);
-            return None;
         }
 
-        let acquire_semaphore = frame.acquire;
+        let frame_id = self.frame_id as usize;
+        let frame = &mut self.frames[frame_id];
+        let _ = VULKAN.wait_for_fences(&[frame.fence], u64::MAX);
 
         VULKAN.reset_command_buffer(frame.command_buffer, false);
 
@@ -129,16 +117,7 @@ impl RendererWindow {
             extent: window_extent,
         };
 
-        let image_index = if let Some(index) =
-            VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore)
-        {
-            index as usize
-        } else {
-            self.resize(window_extent);
-            return None;
-        };
-
-        let image = &self.images[image_index];
+        let image_index = VULKAN.acquire_swapchain_image(&self.swapchain, frame.acquire)?;
 
         let cmd = VULKAN.record_command_buffer(frame.command_buffer);
         record_command_buffer(
@@ -147,7 +126,7 @@ impl RendererWindow {
             self.pipeline,
             self.render_pass,
             *PIPELINE_LAYOUT,
-            image.frame_buffer,
+            self.images[image_index as usize].frame_buffer,
             frame.buffer,
             0,
             frame.buffer,
@@ -166,6 +145,10 @@ impl RendererWindow {
     }
 
     fn resize(&mut self, window_extent: vk::Extent2D) {
+        // Wait for BOTH fences.
+        let fences = [self.frames[0].fence, self.frames[1].fence];
+        let _ = VULKAN.wait_for_fences(&fences, u64::MAX);
+
         let old_format = self.swapchain.format;
         self.swapchain = VULKAN.create_or_resize_swapchain(
             &self.surface,
@@ -182,19 +165,23 @@ impl RendererWindow {
         }
 
         self.images.clear();
-        self.init_images();
+        Self::init_images(&self.swapchain, self.render_pass, &mut self.images);
     }
 
-    fn init_images(&mut self) {
-        let images = VULKAN.get_swapchain_images::<MAX_SWAPCHAIN_DEPTH>(&self.swapchain);
-        self.images.reserve_exact(images.len());
+    fn init_images(
+        swapchain: &SwapchainData,
+        render_pass: vk::RenderPass,
+        buffer: &mut Vec<SwapchainImage>,
+    ) {
+        let images = VULKAN.get_swapchain_images::<MAX_SWAPCHAIN_DEPTH>(swapchain);
+        buffer.reserve_exact(images.len());
 
         for handle in &images {
-            self.images.push({
+            buffer.push({
                 let view = {
                     let create_info = vk::ImageViewCreateInfo::builder()
                         .image(*handle)
-                        .format(self.swapchain.format)
+                        .format(swapchain.format)
                         .view_type(vk::ImageViewType::TYPE_2D)
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -210,10 +197,10 @@ impl RendererWindow {
                 let frame_buffer = {
                     let attachment = [view];
                     let create_info = vk::FramebufferCreateInfo::builder()
-                        .render_pass(self.render_pass)
+                        .render_pass(render_pass)
                         .attachments(&attachment)
-                        .width(self.swapchain.image_size.width)
-                        .height(self.swapchain.image_size.height)
+                        .width(swapchain.image_size.width)
+                        .height(swapchain.image_size.height)
                         .layers(1);
 
                     VULKAN.create_frame_buffer(&create_info)
@@ -236,14 +223,10 @@ impl RendererWindow {
             VULKAN.free(frame.memory);
 
             frame.buffer = VULKAN.create_buffer(&vk::BufferCreateInfo {
-                s_type: vk::StructureType::BUFFER_CREATE_INFO,
-                p_next: std::ptr::null(),
-                flags: vk::BufferCreateFlags::empty(),
                 size: min_capacity,
                 usage: vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
-                queue_family_index_count: 0,
-                p_queue_family_indices: std::ptr::null(),
+                ..Default::default()
             });
 
             let memory_requirements = VULKAN.buffer_memory_requirements(frame.buffer);
@@ -255,10 +238,9 @@ impl RendererWindow {
                 .unwrap();
 
             let alloc_info = vk::MemoryAllocateInfo {
-                s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
-                p_next: std::ptr::null(),
                 allocation_size: memory_requirements.size,
                 memory_type_index,
+                ..Default::default()
             };
 
             frame.memory = VULKAN.allocate(&alloc_info);
@@ -282,11 +264,10 @@ impl RendererWindow {
             // PERFORMANCE(David Z): This call is unecessary if the memory is
             // host-coherent
             VULKAN.flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                s_type: vk::StructureType::MAPPED_MEMORY_RANGE,
-                p_next: std::ptr::null(),
                 memory: frame.memory,
                 offset: 0,
                 size: vk::WHOLE_SIZE,
+                ..Default::default()
             }]);
 
             VULKAN.unmap_memory(frame.memory);

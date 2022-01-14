@@ -1,6 +1,6 @@
 use std::{ffi::CStr, process::abort};
 
-use ash::vk;
+use ash::vk::{self, DependencyFlags};
 use lazy_static::lazy_static;
 
 use super::{color::Color, recorder::Recorder, vulkan::Vulkan};
@@ -162,14 +162,12 @@ pub fn record_command_buffer(
         min_depth: 0.0,
         max_depth: 0.0,
     }]);
-
     cmd.set_scissor(&[viewport]);
 
     let scale = Scale {
         vertical: 2.0 / viewport.extent.height as f32,
         horizontal: 2.0 / viewport.extent.width as f32,
     };
-
     cmd.push_constants(layout, vk::ShaderStageFlags::VERTEX, 0, &scale);
 
     cmd.draw_indexed(num_indices, 1, 0, 0, 0);
@@ -178,40 +176,49 @@ pub fn record_command_buffer(
 }
 
 pub fn create_render_pass(format: vk::Format) -> vk::RenderPass {
-    let attachments = [vk::AttachmentDescription::builder()
-        .format(format)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::STORE)
-        .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-        .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-        .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .build()];
+    let attachments = [vk::AttachmentDescription {
+        flags: vk::AttachmentDescriptionFlags::empty(),
+        format,
+        samples: vk::SampleCountFlags::TYPE_1,
+        load_op: vk::AttachmentLoadOp::CLEAR,
+        store_op: vk::AttachmentStoreOp::STORE,
+        stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+        stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+        initial_layout: vk::ImageLayout::UNDEFINED,
+        final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+    }];
 
-    let attachment_reference = [vk::AttachmentReference::builder()
-        .attachment(0)
-        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .build()];
+    let attachment_reference = [vk::AttachmentReference {
+        attachment: 0,
+        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+    }];
 
-    let subpasses = [vk::SubpassDescription::builder()
-        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&attachment_reference)
-        .build()];
+    let subpasses = [vk::SubpassDescription {
+        pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+        p_color_attachments: attachment_reference.as_ptr(),
+        color_attachment_count: attachment_reference.len() as u32,
+        ..Default::default()
+    }];
 
-    let dependencies = [vk::SubpassDependency::builder()
-        .src_subpass(vk::SUBPASS_EXTERNAL)
-        .dst_subpass(0)
-        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-        .build()];
+    let dependencies = [vk::SubpassDependency {
+        src_subpass: vk::SUBPASS_EXTERNAL,
+        dst_subpass: 0,
+        src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        src_access_mask: vk::AccessFlags::empty(),
+        dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        dependency_flags: DependencyFlags::empty(),
+    }];
 
-    let create_info = vk::RenderPassCreateInfo::builder()
-        .attachments(&attachments)
-        .subpasses(&subpasses)
-        .dependencies(&dependencies);
+    let create_info = vk::RenderPassCreateInfo {
+        p_attachments: attachments.as_ptr(),
+        attachment_count: 1,
+        p_subpasses: subpasses.as_ptr(),
+        subpass_count: 1,
+        p_dependencies: dependencies.as_ptr(),
+        dependency_count: 1,
+        ..Default::default()
+    };
 
     VULKAN.create_render_pass(&create_info)
 }
@@ -232,62 +239,82 @@ pub fn create_pipeline(layout: vk::PipelineLayout, render_pass: vk::RenderPass) 
 
     let vertex_binding_descriptions = [Vertex::BINDING_DESCRIPTION];
     let attribute_binding_descriptions = Vertex::ATTRIBUTE_DESCRIPTION;
-    let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
-        .vertex_binding_descriptions(&vertex_binding_descriptions)
-        .vertex_attribute_descriptions(&attribute_binding_descriptions);
+    let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
+        p_vertex_binding_descriptions: vertex_binding_descriptions.as_ptr(),
+        vertex_binding_description_count: vertex_binding_descriptions.len() as u32,
+        p_vertex_attribute_descriptions: attribute_binding_descriptions.as_ptr(),
+        vertex_attribute_description_count: attribute_binding_descriptions.len() as u32,
+        ..Default::default()
+    };
 
-    let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-        .primitive_restart_enable(false);
+    let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
+        topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+        primitive_restart_enable: vk::FALSE,
+        ..Default::default()
+    };
 
-    let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
-        .viewport_count(1)
-        .scissor_count(1);
+    let viewport_state = vk::PipelineViewportStateCreateInfo {
+        viewport_count: 1,
+        scissor_count: 1,
+        ..Default::default()
+    };
 
-    let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
-        .depth_clamp_enable(false)
-        .rasterizer_discard_enable(false)
-        .polygon_mode(vk::PolygonMode::FILL)
-        .line_width(1.0)
-        .cull_mode(vk::CullModeFlags::BACK)
-        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-        .depth_bias_enable(false);
+    let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
+        depth_clamp_enable: vk::FALSE,
+        rasterizer_discard_enable: vk::FALSE,
+        polygon_mode: vk::PolygonMode::FILL,
+        line_width: 1.0,
+        cull_mode: vk::CullModeFlags::BACK,
+        front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+        depth_bias_enable: vk::FALSE,
+        ..Default::default()
+    };
 
-    let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
-        .sample_shading_enable(false)
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+    let multisample_state = vk::PipelineMultisampleStateCreateInfo {
+        sample_shading_enable: vk::FALSE,
+        rasterization_samples: vk::SampleCountFlags::TYPE_1,
+        ..Default::default()
+    };
 
-    let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::builder()
-        .color_write_mask(
-            vk::ColorComponentFlags::R
-                | vk::ColorComponentFlags::G
-                | vk::ColorComponentFlags::B
-                | vk::ColorComponentFlags::A,
-        )
-        .blend_enable(false)
-        .build()];
+    let color_blend_attachments = [vk::PipelineColorBlendAttachmentState {
+        color_write_mask: vk::ColorComponentFlags::R
+            | vk::ColorComponentFlags::G
+            | vk::ColorComponentFlags::B
+            | vk::ColorComponentFlags::A,
+        blend_enable: vk::FALSE,
+        ..Default::default()
+    }];
 
-    let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
-        .logic_op_enable(false)
-        .attachments(&color_blend_attachments);
+    let color_blend_state = vk::PipelineColorBlendStateCreateInfo {
+        logic_op_enable: vk::FALSE,
+        p_attachments: color_blend_attachments.as_ptr(),
+        attachment_count: color_blend_attachments.len() as u32,
+        ..Default::default()
+    };
 
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
 
-    let dynamic_state =
-        vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
+    let dynamic_state = vk::PipelineDynamicStateCreateInfo {
+        p_dynamic_states: dynamic_states.as_ptr(),
+        dynamic_state_count: dynamic_states.len() as u32,
+        ..Default::default()
+    };
 
-    let create_info = vk::GraphicsPipelineCreateInfo::builder()
-        .stages(&shader_stages)
-        .vertex_input_state(&vertex_input_state)
-        .input_assembly_state(&input_assembly_state)
-        .viewport_state(&viewport_state)
-        .rasterization_state(&rasterization_state)
-        .multisample_state(&multisample_state)
-        .color_blend_state(&color_blend_state)
-        .dynamic_state(&dynamic_state)
-        .layout(layout)
-        .render_pass(render_pass)
-        .subpass(0);
+    let create_info = vk::GraphicsPipelineCreateInfo {
+        p_stages: shader_stages.as_ptr(),
+        stage_count: shader_stages.len() as u32,
+        p_vertex_input_state: &vertex_input_state,
+        p_input_assembly_state: &input_assembly_state,
+        p_viewport_state: &viewport_state,
+        p_rasterization_state: &rasterization_state,
+        p_multisample_state: &multisample_state,
+        p_color_blend_state: &color_blend_state,
+        p_dynamic_state: &dynamic_state,
+        layout: layout,
+        render_pass: render_pass,
+        subpass: 0,
+        ..Default::default()
+    };
 
     VULKAN.create_graphics_pipeline(&create_info)
 }
