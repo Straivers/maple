@@ -35,7 +35,7 @@ fn run() {
     let mut ui_context = ui::Context::default();
     let mut ui_command_buffer = vec![];
 
-    registry.set("slider", 0.5 as f32).unwrap();
+    registry.set("slider", 0.5_f32).unwrap();
     spawn_window("Title 1", |inputs, canvas| {
         for input in inputs {
             let input_handler = ui_context.begin(canvas.size(), &mut ui_command_buffer);
@@ -142,7 +142,7 @@ pub fn spawn_window(title: &str, mut ui_callback: impl FnMut(&[InputEvent], &mut
                     );
                     control.set_title(&s);
 
-                    if resized {
+                    if resized && (draw_time.as_millis() > 15) {
                         println!("{}", &s);
                     }
                 }

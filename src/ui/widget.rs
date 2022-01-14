@@ -95,8 +95,7 @@ impl Widget<(State, f32)> for SmoothSlider {
 
     fn compute_size(&self, min: Extent, max: Extent) -> Extent {
         assert!(self.max_height >= min.height, "widget max size too small");
-        let min_size = Extent::new(max.width, self.max_height.min(max.height));
-        min_size
+        Extent::new(max.width, self.max_height.min(max.height))
     }
 
     fn compute_state(&self, rect: Rect, context: &mut Context) -> (State, f32) {

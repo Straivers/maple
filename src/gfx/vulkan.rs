@@ -78,6 +78,14 @@ unsafe impl Sync for Vulkan {}
 
 #[must_use]
 #[derive(Debug, Default)]
+pub struct SurfaceData {
+    pub handle: vk::SurfaceKHR,
+    pub formats: Vec<vk::SurfaceFormatKHR>,
+    pub present_modes: Vec<vk::PresentModeKHR>,
+}
+
+#[must_use]
+#[derive(Debug, Default)]
 pub struct SwapchainData {
     /// The format of the swapchain's images.
     pub format: vk::Format,
@@ -245,21 +253,44 @@ impl Vulkan {
         \/   |_|\_\_____/ \__,_|_|  |_| \__,_|\___\___|_|\_\_|  |_|_|  \_\
     */
 
-    pub fn create_surface(&self, window_handle: &Handle) -> vk::SurfaceKHR {
+    pub fn create_surface(&self, window_handle: &Handle) -> SurfaceData {
         let ci = vk::Win32SurfaceCreateInfoKHR::builder()
             .hwnd(window_handle.hwnd.0 as _)
             .hinstance(window_handle.hinstance.0 as _);
+
         unsafe {
-            self.os_surface_api
+            let handle = self
+                .os_surface_api
                 .create_win32_surface(&ci, self.allocation_callbacks.as_ref())
+                .expect("Out of memory");
+
+            assert!(self
+                .surface_api
+                .get_physical_device_surface_support(
+                    self.gpu.handle,
+                    self.gpu.present_queue_index,
+                    handle,
+                )
+                .unwrap_or(false));
+            let formats = self
+                .surface_api
+                .get_physical_device_surface_formats(self.gpu.handle, handle);
+            let modes = self
+                .surface_api
+                .get_physical_device_surface_present_modes(self.gpu.handle, handle);
+
+            SurfaceData {
+                handle,
+                formats: formats.unwrap(),
+                present_modes: modes.unwrap(),
+            }
         }
-        .expect("Out of memory")
     }
 
-    pub fn destroy_surface(&self, surface: vk::SurfaceKHR) {
+    pub fn destroy_surface(&self, surface: SurfaceData) {
         unsafe {
             self.surface_api
-                .destroy_surface(surface, self.allocation_callbacks.as_ref());
+                .destroy_surface(surface.handle, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -276,52 +307,27 @@ impl Vulkan {
 
     pub fn create_or_resize_swapchain(
         &self,
-        surface: vk::SurfaceKHR,
+        surface: &SurfaceData,
         size: vk::Extent2D,
         old: Option<vk::SwapchainKHR>,
-        formats: &mut Vec<vk::SurfaceFormatKHR>,
-        present_modes: &mut Vec<vk::PresentModeKHR>,
     ) -> SwapchainData {
-        if old.is_none() {
-            assert!(unsafe {
-                self.surface_api.get_physical_device_surface_support(
-                    self.gpu.handle,
-                    self.gpu.present_queue_index,
-                    surface,
-                )
-            }
-            .unwrap_or(false));
-
-            debug_assert!(formats.is_empty());
-            *formats = unsafe {
-                self.surface_api
-                    .get_physical_device_surface_formats(self.gpu.handle, surface)
-                    .unwrap()
-            };
-
-            debug_assert!(present_modes.is_empty());
-            *present_modes = unsafe {
-                self.surface_api
-                    .get_physical_device_surface_present_modes(self.gpu.handle, surface)
-                    .unwrap()
-            };
-        }
-
         let capabilities = unsafe {
             self.surface_api
-                .get_physical_device_surface_capabilities(self.gpu.handle, surface)
+                .get_physical_device_surface_capabilities(self.gpu.handle, surface.handle)
                 .unwrap()
         };
 
-        let format = *formats
+        let format = *surface
+            .formats
             .iter()
             .find(|f| {
                 f.format == vk::Format::B8G8R8A8_SRGB
                     && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
-            .unwrap_or(&formats[0]);
+            .unwrap_or(&surface.formats[0]);
 
-        let present_mode = *present_modes
+        let present_mode = *surface
+            .present_modes
             .iter()
             .find(|p| **p == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(&vk::PresentModeKHR::FIFO);
@@ -355,7 +361,7 @@ impl Vulkan {
         };
 
         let mut create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface)
+            .surface(surface.handle)
             .min_image_count(min_images)
             .image_format(format.format)
             .image_color_space(format.color_space)
@@ -376,9 +382,7 @@ impl Vulkan {
             create_info.p_queue_family_indices = queue_family_indices.as_ptr();
         }
 
-        #[allow(clippy::or_fun_call)]
-        let old_swapchain = old.unwrap_or(vk::SwapchainKHR::null());
-        create_info.old_swapchain = old_swapchain;
+        create_info.old_swapchain = old.unwrap_or_default();
 
         let handle = unsafe {
             self.swapchain_api
@@ -386,13 +390,11 @@ impl Vulkan {
         }
         .unwrap();
 
-        if create_info.old_swapchain != vk::SwapchainKHR::null() {
-            unsafe {
-                self.swapchain_api.destroy_swapchain(
-                    create_info.old_swapchain,
-                    self.allocation_callbacks.as_ref(),
-                );
-            }
+        unsafe {
+            self.swapchain_api.destroy_swapchain(
+                create_info.old_swapchain,
+                self.allocation_callbacks.as_ref(),
+            );
         }
 
         SwapchainData {
@@ -413,12 +415,12 @@ impl Vulkan {
 
     pub fn get_swapchain_images<const N: usize>(
         &self,
-        swapchain: vk::SwapchainKHR,
+        swapchain: &SwapchainData,
     ) -> ArrayVec<vk::Image, N> {
         load_vk_objects(|count, buffer| unsafe {
             self.swapchain_api.fp().get_swapchain_images_khr(
                 self.device.handle(),
-                swapchain,
+                swapchain.handle,
                 count,
                 buffer,
             )
@@ -769,10 +771,10 @@ impl Vulkan {
         .expect("Out of memory")
     }
 
-    pub fn destroy_render_pass(&self, renderpass: vk::RenderPass) {
+    pub fn destroy_render_pass(&self, render_pass: vk::RenderPass) {
         unsafe {
             self.device
-                .destroy_render_pass(renderpass, self.allocation_callbacks.as_ref());
+                .destroy_render_pass(render_pass, self.allocation_callbacks.as_ref());
         }
     }
 
@@ -870,7 +872,6 @@ impl Drop for Vulkan {
 
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, self.allocation_callbacks.as_ref());
-
             self.device
                 .destroy_device(self.allocation_callbacks.as_ref());
             self.instance

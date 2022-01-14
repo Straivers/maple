@@ -5,7 +5,7 @@ use super::{
         create_pipeline, create_render_pass, record_command_buffer, to_extent, Request, Vertex,
         PIPELINE_LAYOUT, VULKAN,
     },
-    vulkan::SwapchainData,
+    vulkan::{SurfaceData, SwapchainData},
 };
 use crate::{shapes::Extent, sys::Handle};
 
@@ -40,9 +40,7 @@ pub struct Frame {
 /// communicate with the renderer.
 #[derive(Default)]
 pub struct RendererWindow {
-    surface: vk::SurfaceKHR,
-    surface_formats: Vec<vk::SurfaceFormatKHR>,
-    surface_present_modes: Vec<vk::PresentModeKHR>,
+    surface: SurfaceData,
     swapchain: SwapchainData,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
@@ -59,9 +57,7 @@ impl RendererWindow {
         VULKAN.allocate_command_buffers(command_pool, &mut command_buffers);
 
         Self {
-            surface: vk::SurfaceKHR::null(),
-            surface_formats: vec![],
-            surface_present_modes: vec![],
+            surface: SurfaceData::default(),
             swapchain: SwapchainData::default(),
             render_pass: vk::RenderPass::null(),
             pipeline: vk::Pipeline::null(),
@@ -95,13 +91,7 @@ impl RendererWindow {
         let extent = to_extent(window_size);
 
         self.surface = VULKAN.create_surface(window);
-        self.swapchain = VULKAN.create_or_resize_swapchain(
-            self.surface,
-            extent,
-            None,
-            &mut self.surface_formats,
-            &mut self.surface_present_modes,
-        );
+        self.swapchain = VULKAN.create_or_resize_swapchain(&self.surface, extent, None);
         self.render_pass = create_render_pass(self.swapchain.format);
         self.pipeline = create_pipeline(*PIPELINE_LAYOUT, self.render_pass);
 
@@ -126,16 +116,6 @@ impl RendererWindow {
 
         let acquire_semaphore = frame.acquire;
 
-        let image_index = if let Some(index) =
-            VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore)
-        {
-            index as usize
-        } else {
-            self.resize(window_extent);
-            return None;
-        };
-
-        let image = &self.images[image_index];
         VULKAN.reset_command_buffer(frame.command_buffer, false);
 
         // PERFORMANCE(David Z): It might be more efficient to write verticies
@@ -148,6 +128,17 @@ impl RendererWindow {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: window_extent,
         };
+
+        let image_index = if let Some(index) =
+            VULKAN.acquire_swapchain_image(&self.swapchain, acquire_semaphore)
+        {
+            index as usize
+        } else {
+            self.resize(window_extent);
+            return None;
+        };
+
+        let image = &self.images[image_index];
 
         let cmd = VULKAN.record_command_buffer(frame.command_buffer);
         record_command_buffer(
@@ -175,16 +166,11 @@ impl RendererWindow {
     }
 
     fn resize(&mut self, window_extent: vk::Extent2D) {
-        let fences = [self.frames[0].fence, self.frames[1].fence];
-        let _ = VULKAN.wait_for_fences(&fences, u64::MAX);
-
         let old_format = self.swapchain.format;
         self.swapchain = VULKAN.create_or_resize_swapchain(
-            self.surface,
+            &self.surface,
             window_extent,
             Some(self.swapchain.handle),
-            &mut self.surface_formats,
-            &mut self.surface_present_modes,
         );
 
         if old_format != self.swapchain.format {
@@ -200,9 +186,9 @@ impl RendererWindow {
     }
 
     fn init_images(&mut self) {
-        let images = VULKAN.get_swapchain_images::<MAX_SWAPCHAIN_DEPTH>(self.swapchain.handle);
+        let images = VULKAN.get_swapchain_images::<MAX_SWAPCHAIN_DEPTH>(&self.swapchain);
+        self.images.reserve_exact(images.len());
 
-        self.images.reserve(images.len());
         for handle in &images {
             self.images.push({
                 let view = {
@@ -335,6 +321,6 @@ impl Drop for RendererWindow {
         VULKAN.destroy_render_pass(self.render_pass);
 
         VULKAN.destroy_swapchain(std::mem::take(&mut self.swapchain));
-        VULKAN.destroy_surface(self.surface);
+        VULKAN.destroy_surface(std::mem::take(&mut self.surface));
     }
 }
