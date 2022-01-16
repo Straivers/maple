@@ -3,6 +3,9 @@ name = "maple"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["packages/gfx"]
+
 [dependencies]
 ash = { version = "0.33", default-features = false }
 lazy_static = "1.4.0"
