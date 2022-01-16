@@ -1,8 +1,11 @@
 use std::rc::Rc;
 
+use crate::Color;
+
+/// Describes the data format of each pixel in an image.
 #[derive(Clone, Copy, Debug)]
 pub enum Format {
-    RGBA8
+    RGBA8,
 }
 
 impl Format {
@@ -13,11 +16,13 @@ impl Format {
     }
 }
 
+/// The color space that the image is encoded in.
 #[derive(Clone, Copy, Debug)]
 pub enum ColorSpace {
-    SRGB
+    SRGB,
 }
 
+/// Describes the horizontal and vertical size of an image.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Extent {
     width: u32,
@@ -30,7 +35,7 @@ pub struct Image {
     format: Format,
     color_space: ColorSpace,
     size: Extent,
-    bytes: Rc::<[u8]>,
+    bytes: Rc<[u8]>,
 }
 
 impl Image {
@@ -40,7 +45,7 @@ impl Image {
             format,
             color_space,
             size,
-            bytes: Rc::from(vec![0; num_pixels * format.bytes_per_pixel()])
+            bytes: Rc::from(vec![0; num_pixels * format.bytes_per_pixel()]),
         }
     }
 
@@ -58,5 +63,10 @@ impl Image {
 
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    /// Sets the entire image to be `color`.
+    pub fn clear(&mut self, color: Color) {
+        todo!()
     }
 }
