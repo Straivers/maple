@@ -5,20 +5,20 @@ following features.
 
 Feature                 | Software Backend
 ------------------------|-----------------
-`Canvas::new()`         | 🚧
-`Canvas::with_target()` | 🚧
+`Canvas::new()`         | ✅
+`Canvas::with_target()` | ✅
 `Canvas.finish()`       | 🚧
-`Canvas.draw_text()`    |
-`Canvas.draw_rect()`    |
-`Canvas.draw_shape()`   | 🚧
-`Canvas.draw_image()`   |
-`Canvas.clear_rect()`   |
+`Canvas.draw_path()`    | 🚧
+`Canvas.draw_rect()`    | 
+`Canvas.draw_text()`    | 
+`Canvas.draw_image()`   | 
+`Canvas.clear_rect()`   | 
 `Path.close()`          | 🚧
 `Path.move_to()`        | 🚧
 `Path.line_to()`        | 🚧
 `Path.curve_to()`       | 🚧
 `Path.ellipse()`        | 
-`Path.rect()`           |
+`Path.rect()`           | 
 `Image::new()`          | 🚧
 `Image.clear()`         | 🚧
 `Image.clone()`         | 🚧

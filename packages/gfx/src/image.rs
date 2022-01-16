@@ -1,25 +1,35 @@
-use std::rc::Rc;
-
 use crate::Color;
 
-/// Describes the data format of each pixel in an image.
-#[derive(Clone, Copy, Debug)]
-pub enum Format {
-    RGBA8,
+/// Describes the way color information will be stored per pixel.
+pub trait PixelFormat: Clone + From<Color> {
+    const BYTES_PER_PIXEL: usize = std::mem::size_of::<Self>();
+    const BLACK: Self;
+    const WHITE: Self;
 }
 
-impl Format {
-    pub fn bytes_per_pixel(self) -> usize {
-        match self {
-            Format::RGBA8 => 4,
+/// The standard SRGB color space with 8 bits per channel (0-255).
+#[derive(Clone, Copy, Debug)]
+pub struct RgbaU8Srgb {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl PixelFormat for RgbaU8Srgb {
+    const BLACK: Self = Self { r: 0, g: 0, b: 0, a: 0 };
+    const WHITE: Self = Self { r: u8::MAX, g: u8::MAX, b: u8::MAX, a: u8::MAX };
+}
+
+impl From<Color> for RgbaU8Srgb {
+    fn from(color: Color) -> Self {
+        Self {
+            r: (color.r * u8::MAX as f32) as u8,
+            g: (color.g * u8::MAX as f32) as u8,
+            b: (color.b * u8::MAX as f32) as u8,
+            a: (color.a * u8::MAX as f32) as u8,
         }
     }
-}
-
-/// The color space that the image is encoded in.
-#[derive(Clone, Copy, Debug)]
-pub enum ColorSpace {
-    SRGB,
 }
 
 /// Describes the horizontal and vertical size of an image.
@@ -31,42 +41,30 @@ pub struct Extent {
 
 /// An image with clone-on-write semantics.
 #[derive(Clone)]
-pub struct Image {
-    format: Format,
-    color_space: ColorSpace,
+pub struct Image<F: PixelFormat> {
     size: Extent,
-    bytes: Rc<[u8]>,
+    bytes: Box<[F]>,
 }
 
-impl Image {
-    pub fn new(format: Format, color_space: ColorSpace, size: Extent) -> Self {
+impl <F: PixelFormat> Image<F> {
+    pub fn new(size: Extent) -> Self {
         let num_pixels = (size.width * size.height) as usize;
         Self {
-            format,
-            color_space,
             size,
-            bytes: Rc::from(vec![0; num_pixels * format.bytes_per_pixel()]),
+            bytes: vec![F::BLACK; num_pixels * F::BYTES_PER_PIXEL].into_boxed_slice(),
         }
-    }
-
-    pub fn format(&self) -> Format {
-        self.format
-    }
-
-    pub fn color_space(&self) -> ColorSpace {
-        self.color_space
     }
 
     pub fn size(&self) -> Extent {
         self.size
     }
 
-    pub fn bytes(&self) -> &[u8] {
+    pub fn bytes(&self) -> &[F] {
         &self.bytes
     }
 
-    /// Sets the entire image to be `color`.
+    /// Clears the entire image to `color`.
     pub fn clear(&mut self, color: Color) {
-        todo!()
+        self.bytes.fill(color.into())
     }
 }
