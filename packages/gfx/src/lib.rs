@@ -3,8 +3,8 @@
 mod image;
 pub use image::*;
 
-mod shape;
-pub use shape::*;
+mod shapes;
+pub use shapes::*;
 
 pub struct Canvas {
     target: Image,
@@ -25,7 +25,7 @@ impl Canvas {
         self.target
     }
 
-    pub fn draw_shape(&mut self, path: &Shape, style: &Style) {
+    pub fn draw_shape(&mut self, path: &Path, style: &Style) {
         todo!()
     }
 }

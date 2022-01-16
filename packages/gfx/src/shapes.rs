@@ -2,13 +2,13 @@
 /// A compound shape composed of curves and lines that can be drawn by a
 /// [`Canvas`](crate::Canvas).
 #[derive(Default)]
-pub struct Shape {
+pub struct Path {
     start_x: f32,
     start_y: f32,
     values: Vec<Value>,
 }
 
-impl Shape {
+impl Path {
     pub fn close(&mut self) {
         self.values.push(Value {
             op: Operation::Close,
